@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Rust tests
+        run: cargo test --release --manifest-path rust/Cargo.toml
+      - name: Build
+        run: cargo build --release --manifest-path rust/Cargo.toml
+      - name: Node tests (the parity oracle)
+        run: npm test
+      - name: Static assets match the Node implementation
+        run: node parity/extract-assets.mjs --check
+      - name: Parity, MCP and live-update checks
+        shell: bash
+        run: |
+          bin=rust/target/release/agentwatch
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          now=$(node parity/fixtures.mjs .parity-fx)
+          node parity/run.mjs --projects .parity-fx --now "$now" --bin "$bin"
+          node parity/http.mjs --projects .parity-fx --bin "$bin"
+          node parity/live.mjs --bin "$bin"
+          node parity/mcp.mjs --bin "$bin"
+      - name: Plugin manifest
+        if: runner.os == 'Linux'
+        run: |
+          node -e "for (const f of ['.claude-plugin/plugin.json','.claude-plugin/marketplace.json','.mcp.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"

@@ -1,0 +1,17 @@
+{
+  "name": "agentwatch",
+  "owner": {
+    "name": "coreylallojr",
+    "url": "https://github.com/coreylallojr"
+  },
+  "metadata": {
+    "description": "agentwatch for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "agentwatch",
+      "source": "./",
+      "description": "Watch Claude Code sessions and subagents: a local dashboard plus MCP tools (status, timelines, errors, wait-for-agents) and skills. Zero tokens to collect, read-only, redacted."
+    }
+  ]
+}

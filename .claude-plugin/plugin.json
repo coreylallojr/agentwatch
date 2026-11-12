@@ -1,0 +1,19 @@
+{
+  "name": "agentwatch",
+  "version": "0.2.0",
+  "description": "Watch Claude Code sessions and subagents: a local dashboard plus MCP tools (status, timelines, errors, wait-for-agents) and skills. Zero tokens to collect, read-only, redacted.",
+  "author": {
+    "name": "coreylallojr",
+    "url": "https://github.com/coreylallojr"
+  },
+  "homepage": "https://github.com/coreylallojr/agentwatch",
+  "repository": "https://github.com/coreylallojr/agentwatch",
+  "license": "MIT",
+  "keywords": [
+    "observability",
+    "subagents",
+    "dashboard",
+    "mcp",
+    "monitoring"
+  ]
+}

@@ -97,7 +97,7 @@ pub fn alive(pid: u32) -> bool {
         ok && code == STILL_ACTIVE as u32
     }
     #[cfg(unix)]
-    unsafe { libc::kill(pid as i32, 0) == 0 || *libc::__errno_location() == libc::EPERM }
+    unsafe { libc::kill(pid as i32, 0) == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) }
 }
 
 /// `process.kill(pid)` (SIGTERM; TerminateProcess on Windows).

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "agentwatch": {
+      "command": "agentwatch",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
