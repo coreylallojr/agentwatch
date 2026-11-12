@@ -1,0 +1,5 @@
+[
+  { "name": "browser-automation", "match": { "tool": "^mcp__(playwright|puppeteer|chrome)" }, "action": "highlight" },
+  { "name": "blocked-by-hook", "match": { "deny": true }, "action": "toast" },
+  { "name": "stuck", "match": { "stuck": true }, "action": "toast" }
+]

@@ -1,0 +1,16 @@
+{
+  "name": "agentwatch",
+  "version": "0.1.0",
+  "description": "A local web dashboard for watching your Claude Code sessions and subagents. Zero tokens, zero dependencies, read-only.",
+  "type": "module",
+  "license": "MIT",
+  "author": "coreylallojr",
+  "repository": { "type": "git", "url": "git+https://github.com/coreylallojr/agentwatch.git" },
+  "bin": { "agentwatch": "bin/agentwatch.mjs" },
+  "files": ["bin", "src", "rules.json", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node bin/agentwatch.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}

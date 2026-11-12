@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Watch</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --bg:#f6f7f9;--panel:#fff;--panel2:#f0f2f5;--ink:#1d2330;--muted:#6b7385;--line:#e2e5eb;
+  --blue:#2f6fed;--violet:#7c4dff;--amber:#d98a00;--red:#d93838;--green:#1f9d55;--hl:#fff6d6;--hlb:#e8b400;
+  --bubble:#eef3ff;--code:#f3f4f7;--shadow:0 1px 2px rgba(20,30,50,.06),0 2px 8px rgba(20,30,50,.05);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1218;--panel:#161a22;--panel2:#1c212b;--ink:#e3e7ef;--muted:#8d95a8;--line:#272d39;
+  --blue:#5b8cff;--violet:#a78bff;--amber:#f0a92e;--red:#ff6b6b;--green:#3ccf7e;--hl:#2b2612;--hlb:#c99a00;
+  --bubble:#1b2436;--code:#11151c;--shadow:none;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel);height:46px}
+header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+header .sp{flex:1}
+header label{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
+select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font:inherit;font-size:12.5px;max-width:260px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.dot.on{background:var(--green)}
+#wrap{display:flex;height:calc(100% - 46px)}
+aside{width:330px;min-width:260px;border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
+main{flex:1;overflow:auto;position:relative}
+.lane{padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;align-items:center}
+.lane:hover{background:var(--panel2)}
+.lane.sel{background:var(--bubble);box-shadow:inset 3px 0 0 var(--blue)}
+.lane.focus{box-shadow:inset 3px 0 0 var(--hlb)}
+.lane .d{grid-column:2/4;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lane .ty{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lane .m{grid-column:1/4;font-size:11.5px;color:var(--muted);display:flex;gap:10px}
+.lane .last{grid-column:1/4;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Consolas,monospace}
+.pin{border:0;background:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 2px}
+.pin.on{color:var(--amber)}
+.chip{font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;color:#fff;text-transform:lowercase;white-space:nowrap}
+.s-running{background:var(--blue)}.s-thinking{background:var(--violet);animation:pulse 1.6s ease-in-out infinite}
+.s-stale{background:var(--amber)}.s-stuck{background:var(--red)}.s-done{background:var(--green)}
+@keyframes pulse{50%{opacity:.45}}
+.grp{padding:6px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:var(--panel2);border-bottom:1px solid var(--line)}
+#empty{padding:40px;color:var(--muted);text-align:center}
+.head{position:sticky;top:0;z-index:2;background:var(--bg);padding:12px 22px 8px;border-bottom:1px solid var(--line)}
+.head h2{margin:0;font-size:17px;font-weight:600;display:flex;gap:10px;align-items:center}
+.head .sub{color:var(--muted);font-size:12.5px;margin-top:2px;display:flex;gap:14px;flex-wrap:wrap}
+.body{padding:14px 22px 60px;max-width:1000px}
+details.prompt{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:14px;box-shadow:var(--shadow)}
+details.prompt summary{cursor:pointer;color:var(--muted);font-size:12.5px}
+.ev{margin:8px 0}
+.bubble{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;box-shadow:var(--shadow);overflow-wrap:anywhere}
+.bubble.user{background:var(--bubble)}
+.bubble p{margin:.35em 0}.bubble h1,.bubble h2,.bubble h3,.bubble h4{margin:.6em 0 .3em;font-size:14.5px}
+.bubble ul,.bubble ol{margin:.3em 0;padding-left:22px}
+.bubble table{border-collapse:collapse;margin:.4em 0;font-size:12.5px}
+.bubble td,.bubble th{border:1px solid var(--line);padding:3px 7px;text-align:left}
+code{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;background:var(--code);padding:1px 4px;border-radius:4px}
+pre{font-family:Consolas,"Cascadia Mono",monospace;font-size:12px;background:var(--code);padding:8px 10px;border-radius:6px;overflow:auto;max-height:420px;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}
+pre code{background:none;padding:0}
+.think{color:var(--violet);font-size:12px;font-style:italic;padding-left:4px}
+.tool{border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:13px}
+.tool.err{border-color:var(--red)}
+.tool.fx{background:var(--hl);border-color:var(--hlb)}
+.tool .row{display:flex;gap:8px;align-items:center;padding:5px 10px;cursor:pointer}
+.tool .ic{width:22px;height:20px;border-radius:5px;background:var(--panel2);color:var(--muted);font:600 10.5px Consolas,monospace;display:flex;align-items:center;justify-content:center;flex:none}
+.tool .sm{flex:1;font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool .du{color:var(--muted);font-size:11.5px;white-space:nowrap}
+.tool .st{font-size:12px;width:14px;text-align:center}
+.ok{color:var(--green)}.bad{color:var(--red)}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--blue);border-right-color:transparent;border-radius:50%;animation:rot .8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.tool .more{padding:0 10px 8px;display:none}
+.tool.open .more{display:block}
+.lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:6px}
+.btn{font:inherit;font-size:12px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:2px 10px;cursor:pointer}
+.errline{color:var(--red);font-size:13px;border-left:3px solid var(--red);padding:4px 10px;background:var(--panel)}
+.t{color:var(--muted);font-size:11px;margin:0 0 2px 2px}
+#banner{position:fixed;top:54px;right:16px;z-index:9;display:flex;flex-direction:column;gap:8px;max-width:420px}
+.ban{background:var(--hl);border:1px solid var(--hlb);color:var(--ink);border-radius:8px;padding:8px 12px;box-shadow:0 4px 18px rgba(0,0,0,.15);cursor:pointer;font-size:13px}
+.ban b{display:block;font-size:12px}
+#jump{position:fixed;bottom:18px;right:24px;display:none}
+img.shot{max-width:100%;border:1px solid var(--line);border-radius:6px;margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Watch</h1>
+  <span class="dot" id="conn" title="live connection"></span>
+  <select id="project" title="project folder"></select>
+  <select id="session" title="session"></select>
+  <div class="sp"></div>
+  <label title="Collapse every tool card (click a card to open just that one)"><input type="checkbox" id="minall"> minimize all</label>
+  <label><input type="checkbox" id="follow"> follow newest active</label>
+  <label><input type="checkbox" id="showmain"> main session lane</label>
+  <a class="btn" id="collectionLink" href="/collection" target="_blank" title="Every agent, every event, fully expanded on one page" style="text-decoration:none">Collection page</a>
+</header>
+<div id="wrap">
+  <aside id="lanes"></aside>
+  <main id="pane"><div id="empty">Waiting for subagents…</div></main>
+</div>
+<div id="banner"></div>
+<button class="btn" id="jump">Jump to latest</button>
+<script>
+'use strict';
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LS = window.localStorage;
+const st = {
+  agents: new Map(), sessionIds: [], selected: null, detail: null, pinned: new Set(JSON.parse(LS.getItem('aw.pinned') || '[]')),
+  follow: LS.getItem('aw.follow') !== '0', showMain: LS.getItem('aw.main') === '1', session: 'latest',
+  // Cards are EXPANDED by default. `toggled` holds the cards the user flipped away from the default; "minimize all"
+  // flips the default (and clears individual flips).
+  toggled: new Set(), minAll: LS.getItem('aw.minall') === '1', full: new Map(), staleSec: 90, stuckSec: 240, sessions: [], skew: 0,
+};
+const isOpen = (k) => (st.minAll ? st.toggled.has(k) : !st.toggled.has(k));
+$('#follow').checked = st.follow; $('#showmain').checked = st.showMain; $('#minall').checked = st.minAll;
+
+function ago(ms) {
+  if (ms == null) return '–';
+  const s = Math.max(0, Math.round((Date.now() + st.skew - ms) / 1000));
+  if (s < 60) return s + 's'; const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ' + (s % 60) + 's'; const h = Math.floor(m / 60);
+  return h + 'h ' + (m % 60) + 'm';
+}
+function dur(ms) { if (ms == null) return ''; if (ms < 1000) return ms + 'ms'; const s = ms / 1000; return s < 60 ? s.toFixed(1) + 's' : Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's'; }
+function clock(ms) { return ms ? new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
+// client-side status refresh (time passes between server pushes)
+function liveStatus(a) {
+  if (a.status === 'done') return 'done';
+  const age = (Date.now() + st.skew - (a.lastEventAt || 0)) / 1000;
+  if (age > st.stuckSec) return 'stuck';
+  if (age > st.staleSec) return 'stale';
+  return a.status === 'stale' || a.status === 'stuck' ? 'thinking' : a.status;
+}
+const ACTIVE = new Set(['running', 'thinking']);
+
+// ---------- markdown (minimal, escape-first) ----------
+function inline(s) {
+  return s.replace(/`([^`]+)`/g, (_, c) => '<code>' + c + '</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<u title="$2">$1</u>');
+}
+function md(src) {
+  const lines = esc(src).split(/\r?\n/); const out = []; let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^```/.test(l)) { const buf = []; i++; while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]); i++; out.push('<pre><code>' + buf.join('\n') + '</code></pre>'); continue; }
+    let m;
+    if ((m = /^(#{1,4})\s+(.*)$/.exec(l))) { out.push('<h' + m[1].length + '>' + inline(m[2]) + '</h' + m[1].length + '>'); i++; continue; }
+    if (/^\s*\|.*\|\s*$/.test(l)) {
+      const rows = []; while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(lines[i++]);
+      const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+      let h = '<table>';
+      rows.forEach((r, k) => { if (/^[\s|:-]+$/.test(r)) return; const tag = k === 0 ? 'th' : 'td'; h += '<tr>' + cells(r).map((c) => '<' + tag + '>' + inline(c) + '</' + tag + '>').join('') + '</tr>'; });
+      out.push(h + '</table>'); continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l); const items = [];
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, ''));
+      out.push('<' + (ordered ? 'ol' : 'ul') + '>' + items.map((x) => '<li>' + inline(x) + '</li>').join('') + '</' + (ordered ? 'ol' : 'ul') + '>'); continue;
+    }
+    if (!l.trim()) { i++; continue; }
+    const para = []; while (i < lines.length && lines[i].trim() && !/^(```|#{1,4}\s|\s*\||\s*([-*]|\d+\.)\s)/.test(lines[i])) para.push(lines[i++]);
+    if (!para.length) para.push(lines[i++]);
+    out.push('<p>' + inline(para.join('<br>')) + '</p>');
+  }
+  return out.join('');
+}
+
+function icon(tool) {
+  if (!tool) return '?';
+  if (/^mcp__playwright/.test(tool)) return 'PW';
+  const map = { Bash: '$', PowerShell: 'PS', Read: 'R', Edit: 'E', Write: 'W', MultiEdit: 'E', Grep: 'G', Glob: '*', Agent: 'A', Task: 'A', WebSearch: 'WS', WebFetch: 'WF', Skill: 'SK', ToolSearch: 'TS', TodoWrite: 'TD' };
+  return map[tool] || (tool.startsWith('mcp__') ? 'M' : tool.slice(0, 2));
+}
+
+// ---------- sidebar ----------
+function visibleAgents() {
+  return [...st.agents.values()].filter((a) => st.sessionIds.includes(a.sessionId) && (a.kind !== 'main' || st.showMain));
+}
+function renderLanes() {
+  const list = visibleAgents();
+  const rank = (a) => (st.pinned.has(a.id) ? 0 : ACTIVE.has(liveStatus(a)) || ['stale', 'stuck'].includes(liveStatus(a)) ? 1 : 2);
+  list.sort((a, b) => rank(a) - rank(b) || (b.lastEventAt || 0) - (a.lastEventAt || 0));
+  const names = ['Pinned', 'Active', 'Finished'];
+  let html = ''; let grp = -1;
+  for (const a of list) {
+    const r = rank(a); if (r !== grp) { grp = r; html += '<div class="grp">' + names[r] + '</div>'; }
+    const s = liveStatus(a); const fx = (a.focus || []).length;
+    html += '<div class="lane' + (a.id === st.selected ? ' sel' : '') + (fx ? ' focus' : '') + '" data-id="' + esc(a.id) + '">' +
+      '<span class="chip s-' + s + '">' + s + '</span><span class="ty">' + esc(a.type) + '</span>' +
+      '<button class="pin' + (st.pinned.has(a.id) ? ' on' : '') + '" data-pin="' + esc(a.id) + '" title="pin">&#9733;</button>' +
+      '<div class="d" title="' + esc(a.description) + '">' + esc(a.description || a.id) + '</div>' +
+      '<div class="m"><span>&#9201; <span data-elapsed="' + (a.startedAt || '') + '" data-end="' + (a.status === 'done' ? a.lastEventAt || '' : '') + '"></span></span><span>' + a.toolCount + ' tools</span>' +
+      (a.errorCount ? '<span class="bad">' + a.errorCount + ' err</span>' : '') + '<span>last <span data-ago="' + (a.lastEventAt || '') + '"></span> ago</span></div>' +
+      '<div class="last">' + esc(a.lastSummary || '') + '</div></div>';
+  }
+  $('#lanes').innerHTML = html || '<div id="empty">No subagents in this session yet.</div>';
+  tickTimes();
+}
+$('#lanes').addEventListener('click', (e) => {
+  const pin = e.target.closest('[data-pin]');
+  if (pin) { const id = pin.dataset.pin; st.pinned.has(id) ? st.pinned.delete(id) : st.pinned.add(id); LS.setItem('aw.pinned', JSON.stringify([...st.pinned])); renderLanes(); e.stopPropagation(); return; }
+  const lane = e.target.closest('.lane'); if (lane) select(lane.dataset.id, true);
+});
+
+function tickTimes() {
+  document.querySelectorAll('[data-ago]').forEach((el) => { el.textContent = ago(Number(el.dataset.ago) || null); });
+  document.querySelectorAll('[data-elapsed]').forEach((el) => {
+    const s = Number(el.dataset.elapsed); const e = Number(el.dataset.end);
+    el.textContent = s ? (e ? dur(e - s) : ago(s)) : '–';
+  });
+  document.querySelectorAll('.lane').forEach((el) => {
+    const a = st.agents.get(el.dataset.id); if (!a) return; const s = liveStatus(a); const c = el.querySelector('.chip');
+    if (c && c.textContent !== s) { c.className = 'chip s-' + s; c.textContent = s; }
+  });
+  const hc = $('#hchip'); if (hc && st.detail) { const s = liveStatus(st.agents.get(st.detail.id) || st.detail); hc.className = 'chip s-' + s; hc.textContent = s; }
+}
+setInterval(tickTimes, 1000);
+
+// ---------- detail ----------
+function atBottom() { const p = $('#pane'); return p.scrollHeight - p.scrollTop - p.clientHeight < 60; }
+function select(id, manual) {
+  if (!id) return;
+  if (id !== st.selected) { st.toggled.clear(); st.full.clear(); st.detail = null; }
+  st.selected = id; if (manual) st.manualAt = Date.now();
+  history.replaceState(null, '', '#agent=' + encodeURIComponent(id));
+  renderLanes(); loadDetail(true);
+}
+let detailTimer = null; let detailBusy = false;
+function scheduleDetail() { if (detailTimer) return; detailTimer = setTimeout(() => { detailTimer = null; loadDetail(false); }, 600); }
+async function loadDetail(scrollEnd) {
+  if (!st.selected || detailBusy) return; detailBusy = true;
+  try {
+    const r = await fetch('/api/agent/' + encodeURIComponent(st.selected)); if (!r.ok) { detailBusy = false; return; }
+    const d = await r.json(); if (d.id !== st.selected) return;
+    const stick = scrollEnd || atBottom(); st.detail = d; renderDetail();
+    if (stick) $('#pane').scrollTop = $('#pane').scrollHeight;
+  } catch { /* offline */ } finally { detailBusy = false; }
+}
+function renderDetail() {
+  const d = st.detail; if (!d) return;
+  const pane = $('#pane'); const keepTop = pane.scrollTop;
+  const fxIdx = new Set((d.focus || []).map((f) => f.idx));
+  let h = '<div class="head"><h2><span id="hchip" class="chip s-' + d.status + '">' + d.status + '</span>' + esc(d.type) + ' <span style="font-weight:400">' + esc(d.description) + '</span></h2>' +
+    '<div class="sub"><span>started ' + clock(d.startedAt) + '</span><span>elapsed <span data-elapsed="' + (d.startedAt || '') + '" data-end="' + (d.status === 'done' ? d.lastEventAt || '' : '') + '"></span></span>' +
+    '<span>' + d.toolCount + ' tool calls</span>' + (d.errorCount ? '<span class="bad">' + d.errorCount + ' errors</span>' : '') +
+    '<span>last activity <span data-ago="' + (d.lastEventAt || '') + '"></span> ago</span><span style="font-family:Consolas,monospace">' + esc(d.id) + '</span></div></div><div class="body">';
+  if (d.prompt) h += '<details class="prompt"' + (isOpen('prompt') ? ' open' : '') + ' data-k="prompt"><summary>Prompt (' + d.prompt.length + ' chars)</summary><div class="bubble user" style="margin-top:8px">' + md(d.prompt) + '</div></details>';
+  d.events.forEach((e, i) => {
+    if (e.kind === 'thinking') { h += '<div class="ev think">thinking…</div>'; return; }
+    if (e.kind === 'text' || e.kind === 'user') { h += '<div class="ev"><div class="t">' + (e.kind === 'user' ? 'message in' : '') + ' ' + clock(e.t) + '</div><div class="bubble' + (e.kind === 'user' ? ' user' : '') + '">' + md(e.text || e.summary) + '</div></div>'; return; }
+    if (e.kind === 'error' && !e.tool) { h += '<div class="ev errline">' + esc(e.summary) + (e.output ? '<pre>' + esc(e.output) + '</pre>' : '') + '</div>'; return; }
+    const pending = e.kind === 'tool' && !e.done; const k = 'e' + i;
+    const stIcon = pending ? '<span class="spin"></span>' : e.isError ? '<span class="bad">&#10007;</span>' : '<span class="ok">&#10003;</span>';
+    const full = st.full.get(i);
+    h += '<div class="ev tool' + (e.isError ? ' err' : '') + (fxIdx.has(i) ? ' fx' : '') + (isOpen(k) ? ' open' : '') + '" data-k="' + k + '" data-i="' + i + '">' +
+      '<div class="row"><span class="ic">' + esc(icon(e.tool)) + '</span><span class="sm" title="' + esc(e.summary) + '">' + esc(e.summary) + '</span>' +
+      '<span class="du">' + (pending ? '<span data-ago="' + (e.t || '') + '"></span>' : dur(e.durationMs)) + '</span><span class="st">' + stIcon + '</span></div><div class="more">';
+    if (e.input) h += '<div class="lbl">input</div><pre>' + esc(JSON.stringify(e.input, null, 2)) + '</pre>';
+    if (e.output != null || full) {
+      h += '<div class="lbl">output' + (e.outputLen ? ' (' + e.outputLen + ' chars)' : '') + '</div><pre' + (e.isError ? ' class="bad"' : '') + '>' + esc(full ? full.output : e.output) + '</pre>';
+      if (full && full.images) full.images.forEach((im) => { h += '<img class="shot" alt="tool image" src="data:' + esc(im.mediaType) + ';base64,' + esc(im.data) + '">'; });
+      if (!full && ((e.outputLen || 0) > (e.output || '').length || (e.images || []).length)) h += '<button class="btn" data-full="' + i + '">show full' + ((e.images || []).length ? ' + ' + e.images.length + ' image(s)' : '') + '</button>';
+    }
+    h += '</div></div>';
+  });
+  if (ACTIVE.has(d.status)) h += '<div class="ev think" style="color:var(--muted)">working…</div>';
+  h += '</div>';
+  pane.innerHTML = h; pane.scrollTop = keepTop; tickTimes();
+}
+$('#pane').addEventListener('click', async (e) => {
+  const fb = e.target.closest('[data-full]');
+  if (fb) {
+    const i = Number(fb.dataset.full); fb.textContent = 'loading…';
+    const r = await fetch('/api/agent/' + encodeURIComponent(st.selected) + '?event=' + i);
+    if (r.ok) { const j = await r.json(); st.full.set(i, j.event); renderDetail(); }
+    return;
+  }
+  const row = e.target.closest('.tool .row');
+  if (row) { const card = row.parentElement; const k = card.dataset.k; card.classList.toggle('open'); st.toggled.has(k) ? st.toggled.delete(k) : st.toggled.add(k); }
+});
+$('#pane').addEventListener('toggle', (e) => {
+  if (!(e.target.dataset && e.target.dataset.k === 'prompt')) return;
+  if (e.target.open !== isOpen('prompt')) { st.toggled.has('prompt') ? st.toggled.delete('prompt') : st.toggled.add('prompt'); }
+}, true);
+$('#minall').onchange = (e) => { st.minAll = e.target.checked; LS.setItem('aw.minall', st.minAll ? '1' : '0'); st.toggled.clear(); renderDetail(); };
+$('#pane').addEventListener('scroll', () => { $('#jump').style.display = atBottom() ? 'none' : 'block'; });
+$('#jump').onclick = () => { $('#pane').scrollTop = $('#pane').scrollHeight; };
+
+// ---------- follow ----------
+function maybeFollow(a, isNew) {
+  if (!st.follow || !a || !st.sessionIds.includes(a.sessionId) || (a.kind === 'main' && !st.showMain)) return;
+  if (!ACTIVE.has(liveStatus(a)) || a.id === st.selected) return;
+  const cur = st.agents.get(st.selected);
+  // a lane the user picked (click / deep link) is kept until a brand-new agent spawns (not within 10s of picking)
+  const manual = !!st.manualAt; const fresh = manual && Date.now() - st.manualAt < 10000;
+  if (!cur || (isNew && !fresh) || (!manual && !ACTIVE.has(liveStatus(cur)))) select(a.id, false);
+}
+
+// ---------- banner ----------
+function banner(f) {
+  const a = st.agents.get(f.agentId);
+  const el = document.createElement('div'); el.className = 'ban';
+  el.innerHTML = '<b>' + esc(f.rule) + ' · ' + esc(a ? a.type + ' – ' + (a.description || '') : f.agentId) + '</b>' + esc(f.summary || '');
+  el.onclick = () => { select(f.agentId, true); el.remove(); };
+  $('#banner').prepend(el); setTimeout(() => el.remove(), 15000);
+  while ($('#banner').children.length > 4) $('#banner').lastChild.remove();
+}
+
+// ---------- data ----------
+st.project = new URLSearchParams(location.search).get('project') || LS.getItem('aw.project') || '';
+async function loadState() {
+  const r = await fetch('/api/state?session=' + encodeURIComponent(st.session) + (st.showMain ? '&main=1' : '') + (st.project ? '&project=' + encodeURIComponent(st.project) : ''));
+  const s = await r.json();
+  st.skew = s.now - Date.now(); st.staleSec = s.staleSec; st.stuckSec = s.stuckSec; st.sessionIds = s.sessionIds; st.sessions = s.sessions;
+  st.agents = new Map(s.agents.map((a) => [a.id, a]));
+  const ps = $('#project');
+  ps.innerHTML = '<option value="">all projects</option>' + (s.projects || []).map((p) => '<option value="' + esc(p.key) + '" title="' + esc(p.cwd || '') + '">' + esc(p.name) + '</option>').join('');
+  ps.value = st.project;
+  $('#collectionLink').href = '/collection?session=' + encodeURIComponent(st.session) + (st.project ? '&project=' + encodeURIComponent(st.project) : '');
+  const sel = $('#session');
+  sel.innerHTML = '<option value="latest">latest session</option><option value="all-recent">all sessions (24h)</option>' +
+    s.sessions.map((x) => '<option value="' + esc(x.id) + '">' + (st.project ? '' : esc(x.project || '') + ' · ') + esc(x.id.slice(0, 8)) + ' · ' + new Date(x.mtime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + (x.agents ? ' · ' + x.agents + ' agents' : '') + '</option>').join('');
+  sel.value = st.session;
+  const hash = /#agent=([^&]+)/.exec(location.hash);
+  const want = hash ? decodeURIComponent(hash[1]) : null;
+  if (want && st.agents.has(want)) select(want, true);
+  else if (!st.selected || !st.agents.has(st.selected)) {
+    const vis = visibleAgents().sort((a, b) => (b.lastEventAt || 0) - (a.lastEventAt || 0));
+    const act = vis.find((a) => ACTIVE.has(liveStatus(a)));
+    if (act || vis[0]) select((act || vis[0]).id, false); else { renderLanes(); }
+  } else { renderLanes(); loadDetail(false); }
+}
+$('#project').onchange = (e) => { st.project = e.target.value; LS.setItem('aw.project', st.project); st.session = 'latest'; st.selected = null; loadState(); };
+$('#session').onchange = (e) => { st.session = e.target.value; st.selected = null; loadState(); };
+$('#follow').onchange = (e) => { st.follow = e.target.checked; LS.setItem('aw.follow', st.follow ? '1' : '0'); };
+$('#showmain').onchange = (e) => { st.showMain = e.target.checked; LS.setItem('aw.main', st.showMain ? '1' : '0'); loadState(); };
+window.addEventListener('hashchange', () => { const m = /#agent=([^&]+)/.exec(location.hash); if (m && decodeURIComponent(m[1]) !== st.selected) select(decodeURIComponent(m[1]), true); });
+
+let laneTimer = null;
+function connect() {
+  const es = new EventSource('/events');
+  es.onopen = () => { $('#conn').classList.add('on'); loadState(); };
+  es.onerror = () => { $('#conn').classList.remove('on'); };
+  es.onmessage = (m) => {
+    let msg; try { msg = JSON.parse(m.data); } catch { return; }
+    if (msg.type === 'agent') {
+      const a = msg.agent;
+      if (!st.sessionIds.includes(a.sessionId)) {
+        if (st.session === 'latest' && a.kind === 'agent' && !st.agents.has(a.id) && ACTIVE.has(a.status)) { loadState(); }
+        return;
+      }
+      const isNew = !st.agents.has(a.id); st.agents.set(a.id, a);
+      if (!laneTimer) laneTimer = setTimeout(() => { laneTimer = null; renderLanes(); }, 250);
+      if (a.id === st.selected) scheduleDetail();
+      maybeFollow(a, isNew);
+    } else if (msg.type === 'focus') {
+      if (st.sessionIds.includes(msg.sessionId)) banner(msg);
+    }
+  };
+}
+connect();
+</script>
+</body>
+</html>
