@@ -471,12 +471,18 @@ pub fn base64_decode(s: &str) -> Vec<u8> {
     out
 }
 
-pub fn esc_html(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 16);
-    for c in s.chars() {
-        match c { '&' => out.push_str("&amp;"), '<' => out.push_str("&lt;"), '>' => out.push_str("&gt;"), '"' => out.push_str("&quot;"), '\'' => out.push_str("&#39;"), c => out.push(c) }
+pub fn esc_html(s: &str) -> String { let mut o = String::with_capacity(s.len() + 16); esc_html_into(&mut o, s); o }
+
+/// Appends `s` HTML-escaped (& < > " ') to `o`, copying unescaped runs in one go.
+pub fn esc_html_into(o: &mut String, s: &str) {
+    let mut last = 0;
+    for (i, &c) in s.as_bytes().iter().enumerate() {
+        let r = match c { b'&' => "&amp;", b'<' => "&lt;", b'>' => "&gt;", b'"' => "&quot;", b'\'' => "&#39;", _ => continue };
+        o.push_str(&s[last..i]);
+        o.push_str(r);
+        last = i + 1;
     }
-    out
+    o.push_str(&s[last..]);
 }
 
 #[cfg(test)]

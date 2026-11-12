@@ -19,6 +19,7 @@ fn main() {
     match argv.first().map(String::as_str) {
         Some("serve") => serve(&argv[1..]),
         Some("__dump") => dump(&argv[1..]),
+        Some("__profile") => profile(&argv[1..]),
         _ => {
             let code = match cli(&argv) { Ok(()) => 0, Err(e) => { eprintln!("agentwatch: {e}"); 1 } };
             std::process::exit(code);
@@ -200,7 +201,7 @@ fn dump(argv: &[String]) {
             add(format!("state|{sess}|{}|{main}", proj.clone().unwrap_or_default()), Value::from(js::json(&Value::Object(v))));
         }
         let s2 = st.state(sess, true, proj.as_deref());
-        let m = collection::build_model(&s2, |id| st.builder(id), now);
+        let m = collection::build_model(s2, |id| st.builder(id), now);
         let key = format!("{sess}|{}", proj.clone().unwrap_or_default());
         add(format!("page|{key}"), Value::from(collection::render_page(&m)));
         add(format!("fragment|{key}"), Value::from(collection::render_body(&m)));
@@ -214,4 +215,32 @@ fn dump(argv: &[String]) {
         for i in 0..n { add(format!("event|{id}|{i}"), j(st.agent(&id, Some(i as f64), false))); }
     }
     print!("{}", js::json(&Value::Object(out)));
+}
+
+// ---------------------------------------------------------------- profiling
+
+/// `agentwatch __profile [--projects <dir>]`: in-process timings of the hot paths (no HTTP).
+fn profile(argv: &[String]) {
+    use std::time::Instant;
+    let val = |n: &str| argv.iter().position(|a| a == n).and_then(|i| argv.get(i + 1)).cloned();
+    let root = val("--projects").map(std::path::PathBuf::from).unwrap_or_else(sys::default_projects_root);
+    let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+    let mut st = store::Store::new(root, sys::load_rules(None));
+    let t = Instant::now(); st.scan(); println!("cold scan            {:8.1} ms  ({} sessions, {} files)", ms(t), st.sessions.len(), st.files.len());
+    let t = Instant::now(); for _ in 0..20 { st.scan(); } println!("warm scan (avg of 20){:8.1} ms", ms(t) / 20.0);
+    let t = Instant::now(); let s = st.state("all-recent", true, None); println!("state all-recent+main{:8.1} ms  ({} agents, first call: tracks + reads main files)", ms(t), s.agents.len());
+    let t = Instant::now(); for _ in 0..20 { st.state("all-recent", true, None); } println!("state again (avg)    {:8.1} ms", ms(t) / 20.0);
+    let t = Instant::now(); for _ in 0..20 { st.scan(); } println!("warm scan, mains on  {:8.1} ms", ms(t) / 20.0);
+    let t = Instant::now(); for _ in 0..20 { st.tick(); } println!("tick (avg)           {:8.2} ms", ms(t) / 20.0);
+    let s = st.state("all-recent", true, None);
+    let now = clock::now_ms();
+    let s_json = js::json(&serde_json::Value::Object(s.to_value())).len();
+    let t = Instant::now(); let m = collection::build_model(s, |id| st.builder(id), now); println!("build_model          {:8.1} ms  ({} events)", ms(t), m.total_events);
+    let t = Instant::now(); let p = collection::render_page(&m); println!("render_page          {:8.1} ms  ({} KB)", ms(t), p.len() / 1024);
+    let t = Instant::now(); let x = collection::snapshot_text(&m); println!("snapshot_text        {:8.1} ms  ({} KB)", ms(t), x.len() / 1024);
+    println!("state JSON size      {:8} KB", s_json / 1024);
+    if let Some(big) = st.files.iter().max_by_key(|f| f.builder.events.len()) {
+        let id = big.id.clone();
+        let t = Instant::now(); let d = st.agent(&id, None, true).unwrap(); let j = js::json(&d); println!("agent full JSON      {:8.1} ms  ({} KB, {} events)", ms(t), j.len() / 1024, big.builder.events.len());
+    }
 }

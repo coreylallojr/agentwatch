@@ -52,6 +52,8 @@ pub struct Session {
     pub mtime: f64,
     pub tracked: bool,
     pub want_main: bool,
+    /// (size, mtime) of the main file when its cwd was last looked for and not found
+    cwd_tried: Option<(u64, f64)>,
 }
 
 impl Session {
@@ -80,6 +82,8 @@ pub struct Store {
     sess_idx: HashMap<String, usize>,
     pub files: Vec<FileRec>,
     file_idx: HashMap<PathBuf, usize>,
+    meta_idx: HashMap<PathBuf, usize>,
+    main_idx: HashMap<PathBuf, usize>,
     by_id: HashMap<String, usize>,
     pub last_file_change: f64,
     pub emitted: Vec<Snapshot>,
@@ -115,7 +119,7 @@ impl Store {
     pub fn new(projects_root: PathBuf, rules: Vec<Rule>) -> Self {
         Store {
             projects_root, rules, stale_sec: STALE_SEC, stuck_sec: STUCK_SEC, sessions: vec![], sess_idx: HashMap::new(),
-            files: vec![], file_idx: HashMap::new(), by_id: HashMap::new(), last_file_change: now_ms(), emitted: vec![],
+            files: vec![], file_idx: HashMap::new(), meta_idx: HashMap::new(), main_idx: HashMap::new(), by_id: HashMap::new(), last_file_change: now_ms(), emitted: vec![],
         }
     }
 
@@ -136,14 +140,17 @@ impl Store {
                     Some(&i) => i,
                     None => {
                         self.sessions.push(Session { id: id.to_string(), main_path: main_path.clone(), project_dir: project_dir.clone(), project_key: dir_name.clone(),
-                            cwd: None, project: None, mtime: 0.0, tracked: false, want_main: false });
+                            cwd: None, project: None, mtime: 0.0, tracked: false, want_main: false, cwd_tried: None });
                         self.sess_idx.insert(id.to_string(), self.sessions.len() - 1);
+                        self.main_idx.insert(main_path.clone(), self.sessions.len() - 1);
                         self.sessions.len() - 1
                     }
                 };
                 let s = &mut self.sessions[i];
                 s.mtime = s.mtime.max(mt);
-                if s.cwd.is_none() {
+                // Node re-reads the head of a cwd-less session on every scan; the answer only changes with the file
+                if s.cwd.is_none() && s.cwd_tried != Some((st.len(), mt)) {
+                    s.cwd_tried = Some((st.len(), mt));
                     s.cwd = read_cwd(&main_path);
                     if let Some(c) = &s.cwd {
                         let trimmed = c.trim_end_matches(['\\', '/']);
@@ -162,6 +169,42 @@ impl Store {
                 self.read_file(&p, "main", &sid, &format!("main-{sid}"), None);
             }
         }
+    }
+
+    /// Targeted update from file-watcher paths: re-read only the transcripts and metadata that changed. Returns false
+    /// when a full scan is needed instead (a new transcript or metadata file, or a session that just became recent).
+    /// Directory events are ignored: every new file brings its own event.
+    pub fn on_paths(&mut self, paths: &[PathBuf]) -> bool {
+        let now = now_ms();
+        let mut todo: Vec<usize> = vec![];
+        for p in paths {
+            let mut known = false;
+            if let Some(&si) = self.main_idx.get(p) {
+                known = true;
+                if let Ok(st) = fs::metadata(p) {
+                    let mt = mtime_ms(&st);
+                    let s = &mut self.sessions[si];
+                    s.mtime = s.mtime.max(mt);
+                    if !s.tracked && now - mt < DAY { return false; }
+                    if s.cwd.is_none() && s.cwd_tried != Some((st.len(), mt)) { return false; }
+                }
+            }
+            if let Some(&i) = self.file_idx.get(p).or_else(|| self.meta_idx.get(p)) {
+                known = true;
+                if !todo.contains(&i) { todo.push(i); }
+            }
+            if !known {
+                let name = p.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                if name.ends_with(".jsonl") || name.ends_with(".meta.json") { return false; }
+            }
+        }
+        for i in todo {
+            let r = &self.files[i];
+            let (f, k, sid, id, mp) = (r.file.clone(), r.kind, r.session_id.clone(), r.id.clone(), r.meta_path.clone());
+            if !self.sess_idx.get(&sid).map(|&si| self.sessions[si].tracked).unwrap_or(false) { continue; }
+            self.read_file(&f, k, &sid, &id, mp);
+        }
+        true
     }
 
     fn scan_subagents(&mut self, si: usize) {
@@ -185,6 +228,7 @@ impl Store {
                 });
                 let i = self.files.len() - 1;
                 self.file_idx.insert(file.to_path_buf(), i);
+                if let Some(mp) = &self.files[i].meta_path { self.meta_idx.insert(mp.clone(), i); }
                 self.by_id.insert(id.to_string(), i);
                 i
             }

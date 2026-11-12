@@ -52,30 +52,44 @@ static R: LazyLock<Rules> = LazyLock::new(|| Rules {
     b64: re(r"[A-Za-z0-9+_-]{32,}={0,2}"),
 });
 
-fn rep<'a>(re: &Regex, s: std::borrow::Cow<'a, str>, with: &str) -> std::borrow::Cow<'a, str> {
-    match re.replace_all(&s, with) {
-        std::borrow::Cow::Borrowed(_) => s,
-        std::borrow::Cow::Owned(o) => std::borrow::Cow::Owned(o),
+/// All nine rules in one automaton: a single pass tells which rules can match at all. Rules apply in order, and a
+/// replacement can create a new `\b` boundary for a later rule (e.g. `[email]` before a hex run), so the set is
+/// re-run on the new text after every rule that actually changed it.
+static SET: LazyLock<regex::RegexSet> = LazyLock::new(|| {
+    let r = &*R;
+    regex::RegexSet::new([&r.email, &r.ssn, &r.card, &r.xhdr, &r.envtok, &r.bearer, &r.jwt, &r.hex, &r.b64].map(|x| x.as_str())).expect("redaction set")
+});
+
+fn apply(i: usize, s: &str) -> std::borrow::Cow<'_, str> {
+    let r = &*R;
+    match i {
+        0 => r.email.replace_all(s, "[email]"),
+        1 => r.ssn.replace_all(s, "[ssn]"),
+        2 => r.card.replace_all(s, |c: &Captures| if luhn(&c[0]) { "[card]".to_string() } else { c[0].to_string() }),
+        3 => r.xhdr.replace_all(s, "${1}[redacted]"),
+        4 => r.envtok.replace_all(s, "${1}[redacted]"),
+        5 => r.bearer.replace_all(s, "${1} [redacted]"),
+        6 => r.jwt.replace_all(s, "[jwt]"),
+        7 => r.hex.replace_all(s, "[hex-secret]"),
+        _ => r.b64.replace_all(s, |c: &Captures| {
+            let m = &c[0];
+            let (u, l, d) = (m.bytes().any(|b| b.is_ascii_uppercase()), m.bytes().any(|b| b.is_ascii_lowercase()), m.bytes().any(|b| b.is_ascii_digit()));
+            if u && l && d { "[secret]".to_string() } else { m.to_string() }
+        }),
     }
 }
 
 pub fn redact(text: &str) -> String {
-    let r = &*R;
-    let mut s = std::borrow::Cow::Borrowed(text);
-    s = rep(&r.email, s, "[email]");
-    s = rep(&r.ssn, s, "[ssn]");
-    if let std::borrow::Cow::Owned(o) = r.card.replace_all(&s, |c: &Captures| if luhn(&c[0]) { "[card]".to_string() } else { c[0].to_string() }) { s = o.into(); }
-    s = rep(&r.xhdr, s, "${1}[redacted]");
-    s = rep(&r.envtok, s, "${1}[redacted]");
-    s = rep(&r.bearer, s, "${1} [redacted]");
-    s = rep(&r.jwt, s, "[jwt]");
-    s = rep(&r.hex, s, "[hex-secret]");
-    let out = r.b64.replace_all(&s, |c: &Captures| {
-        let m = &c[0];
-        let (u, l, d) = (m.bytes().any(|b| b.is_ascii_uppercase()), m.bytes().any(|b| b.is_ascii_lowercase()), m.bytes().any(|b| b.is_ascii_digit()));
-        if u && l && d { "[secret]".to_string() } else { m.to_string() }
-    });
-    out.into_owned()
+    let mut hits = SET.matches(text);
+    if !hits.matched_any() { return text.to_string(); }
+    let mut buf: Option<String> = None;
+    for i in 0..9 {
+        if !hits.matched(i) { continue; }
+        let cur = buf.as_deref().unwrap_or(text);
+        let changed = match apply(i, cur) { std::borrow::Cow::Owned(o) if o != cur => Some(o), _ => None };
+        if let Some(o) = changed { hits = SET.matches(&o); buf = Some(o); }
+    }
+    buf.unwrap_or_else(|| text.to_string())
 }
 
 /// JS `redact(v)` for an arbitrary value (`null`/`undefined` -> '').

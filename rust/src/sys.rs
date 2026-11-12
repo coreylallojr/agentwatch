@@ -117,3 +117,21 @@ pub fn kill(pid: u32) -> Result<(), String> {
 }
 
 pub fn compile_text_pub(t: &str) -> Vec<Rule> { compile_text(t).unwrap_or_default() }
+
+/// Per-thread Windows quality of service. `interactive = true` (request threads, someone is waiting) opts out of
+/// execution-speed throttling so the thread can run on performance cores; `false` (background scanning, pings)
+/// opts in to EcoQoS. No-op elsewhere.
+pub fn set_thread_qos(interactive: bool) {
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Threading::{GetCurrentThread, SetThreadInformation, ThreadPowerThrottling, THREAD_POWER_THROTTLING_CURRENT_VERSION, THREAD_POWER_THROTTLING_EXECUTION_SPEED, THREAD_POWER_THROTTLING_STATE};
+        let st = THREAD_POWER_THROTTLING_STATE {
+            Version: THREAD_POWER_THROTTLING_CURRENT_VERSION,
+            ControlMask: THREAD_POWER_THROTTLING_EXECUTION_SPEED,
+            StateMask: if interactive { 0 } else { THREAD_POWER_THROTTLING_EXECUTION_SPEED },
+        };
+        SetThreadInformation(GetCurrentThread(), ThreadPowerThrottling, &st as *const _ as *const core::ffi::c_void, std::mem::size_of::<THREAD_POWER_THROTTLING_STATE>() as u32);
+    }
+    #[cfg(not(windows))]
+    let _ = interactive;
+}

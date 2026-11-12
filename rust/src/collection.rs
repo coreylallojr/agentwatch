@@ -2,7 +2,7 @@
 //! The static shell (CSS, header, client script, Watchkeeper text) lives in rust/assets, extracted from the Node module
 //! by parity/extract-assets.mjs so the two can never drift silently.
 use crate::js::{self, esc_html as esc, iso as iso_ms, len16};
-use crate::parse::{AgentBuilder, Event, Snapshot};
+use crate::parse::{AgentBuilder, Event, Full, Image, Snapshot};
 use crate::store::State;
 use regex::Regex;
 use serde_json::Value;
@@ -101,24 +101,39 @@ fn first(s: &str, n: usize) -> String {
     if len16(t) > n { format!("{}…", js::head16(t, n - 1)) } else { t.to_string() }
 }
 
-fn pre(s: &str, cls: &str) -> String { format!("<pre class=\"{cls}\">{}</pre>", esc(s)) }
+fn pre(s: &str, cls: &str) -> String { let mut o = String::with_capacity(s.len() + 32); pre_into(&mut o, s, cls); o }
+fn pre_into(o: &mut String, s: &str, cls: &str) { o.push_str("<pre class=\""); o.push_str(cls); o.push_str("\">"); js::esc_html_into(o, s); o.push_str("</pre>"); }
 fn vstr(v: &Value) -> String { js::string_or_empty(Some(v)) }
 
 // ---------------------------------------------------------------- model
 
-pub struct MEvent { pub n: usize, pub id: String, pub t: Option<f64>, pub ty: &'static str, pub signal: &'static str, pub e: Event, pub err: Option<(String, String)> }
+/// A stored event seen through `{...e, output: full.output, images: full.images}` without copying anything.
+#[derive(Clone, Copy)]
+pub struct Ev<'a> { e: &'a Event, full: Option<&'a Full> }
 
-pub struct MAgent { pub s: Snapshot, pub prompt: String, pub events: Vec<MEvent>, pub handback: String, pub latest: Option<usize>, pub dom_id: String }
+impl<'a> std::ops::Deref for Ev<'a> {
+    type Target = Event;
+    fn deref(&self) -> &Event { self.e }
+}
 
-impl MAgent {
+impl<'a> Ev<'a> {
+    pub fn out(&self) -> Option<&'a str> { match self.full { Some(f) => Some(f.output.as_str()), None => self.e.output.as_deref() } }
+    pub fn imgs(&self) -> Option<&'a [Image]> { match self.full { Some(f) => Some(f.images.as_slice()), None => self.e.images.as_deref() } }
+}
+
+pub struct MEvent<'a> { pub n: usize, pub id: String, pub t: Option<f64>, pub ty: &'static str, pub signal: &'static str, pub e: Ev<'a>, pub err: Option<(String, String)> }
+
+pub struct MAgent<'a> { pub s: Snapshot, pub prompt: String, pub events: Vec<MEvent<'a>>, pub handback: String, pub latest: Option<usize>, pub dom_id: String }
+
+impl MAgent<'_> {
     fn desc_or_id(&self) -> String { if js::truthy(Some(&self.s.description)) { self.s.desc_str() } else { self.s.id.clone() } }
 }
 
-pub struct Model {
+pub struct Model<'a> {
     pub now: f64,
     pub version: String,
     pub session_ids: Vec<String>,
-    pub agents: Vec<MAgent>,
+    pub agents: Vec<MAgent<'a>>,
     pub counts: [usize; 5],
     pub err_by: Vec<(String, usize)>,
     pub total_errors: usize,
@@ -131,30 +146,32 @@ pub struct Model {
     pub latest_event_at: Option<f64>,
 }
 
-impl Model {
+impl<'a> Model<'a> {
     fn err_count(&self, k: &str) -> usize { self.err_by.iter().find(|(s, _)| s == k).map(|x| x.1).unwrap_or(0) }
-    fn ev(&self, (a, x): (usize, usize)) -> (&MAgent, &MEvent) { (&self.agents[a], &self.agents[a].events[x]) }
+    fn ev(&self, (a, x): (usize, usize)) -> (&MAgent<'a>, &MEvent<'a>) { (&self.agents[a], &self.agents[a].events[x]) }
 }
 
 /// `details(id)` returns the agent's builder (for its prompt and merged events), like `store.agent(id, null, {full})`.
-pub fn build_model<'a>(state: &State, details: impl Fn(&str) -> Option<&'a AgentBuilder>, now: f64) -> Model {
-    let mut agents: Vec<MAgent> = state.agents.iter().map(|a| {
+pub fn build_model<'a>(state: State, details: impl Fn(&str) -> Option<&'a AgentBuilder>, now: f64) -> Model<'a> {
+    let session_ids = state.session_ids;
+    let mut agents: Vec<MAgent<'a>> = state.agents.into_iter().map(|a| {
         let b = details(&a.id);
-        let (prompt, evs): (String, Vec<Event>) = match b {
-            Some(b) => (b.prompt.clone().unwrap_or_default(), (0..b.events.len()).map(|i| b.merged_event(i).unwrap()).collect()),
-            None => (a.prompt.clone(), vec![]),
+        let (prompt, evs): (String, &'a [Event]) = match b {
+            Some(b) => (b.prompt.clone().unwrap_or_default(), b.events.as_slice()),
+            None => (a.prompt.clone(), &[]),
         };
         let did = dom_id(&a.id);
-        let events: Vec<MEvent> = evs.iter().enumerate().map(|(i, e)| {
+        let events: Vec<MEvent<'a>> = evs.iter().enumerate().map(|(i, e)| {
             let ty = event_type(e, a.kind);
             let mut err = None;
-            if e.kind == "tool" && e.is_err() { err = Some(error_status(&evs, i, a.status)); }
+            if e.kind == "tool" && e.is_err() { err = Some(error_status(evs, i, a.status)); }
             if e.kind == "error" { err = Some((if a.status == "done" { "unresolved" } else { "unknown" }.into(), "agent-level error (API or system)".into())); }
-            MEvent { n: i + 1, id: format!("{did}-e{}", i + 1), t: e.t, ty, signal: signal_of(ty, e), e: e.clone(), err }
+            let full = b.and_then(|b| b.full.get(&i));
+            MEvent { n: i + 1, id: format!("{did}-e{}", i + 1), t: e.t, ty, signal: signal_of(ty, e), e: Ev { e, full }, err }
         }).collect();
         let handback = if a.kind == "agent" && a.status == "done" { a.final_text.clone() } else { String::new() };
         let latest = events.iter().rposition(|x| x.signal != "noise");
-        MAgent { s: a.clone(), prompt, events, handback, latest, dom_id: did }
+        MAgent { s: a, prompt, events, handback, latest, dom_id: did }
     }).collect();
     let rank = |a: &MAgent| if a.s.kind == "main" { 0 } else if ["running", "thinking", "stale", "stuck"].contains(&a.s.status) { 1 } else { 2 };
     agents.sort_by(|x, y| rank(x).cmp(&rank(y)).then_with(|| y.s.last_event_at.unwrap_or(0.0).partial_cmp(&x.s.last_event_at.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal)));
@@ -190,14 +207,14 @@ pub fn build_model<'a>(state: &State, details: impl Fn(&str) -> Option<&'a Agent
     let total_events = agents.iter().map(|a| a.events.len()).sum();
     let lmax = agents.iter().map(|a| a.s.last_event_at.filter(|v| *v != 0.0 && !v.is_nan()).unwrap_or(0.0)).fold(0.0f64, f64::max);
     Model {
-        now, version, session_ids: state.session_ids.clone(), last_tool: tools.first().copied(), agents, counts, err_by, total_errors, in_flight,
+        now, version, session_ids, last_tool: tools.first().copied(), agents, counts, err_by, total_errors, in_flight,
         handbacks: hb, finished, main, total_events, latest_event_at: if lmax != 0.0 { Some(lmax) } else { None },
     }
 }
 
 // ---------------------------------------------------------------- HTML
 
-fn render_snapshot(m: &Model, o: &mut String) {
+fn render_snapshot(m: &Model<'_>, o: &mut String) {
     let st = match m.main {
         Some(i) => { let a = &m.agents[i].s; format!("{} · last activity {} · {} tool calls", a.status.to_ascii_uppercase(), iso(a.last_event_at), a.tool_count) }
         None => "not tracked".into(),
@@ -243,7 +260,7 @@ fn render_snapshot(m: &Model, o: &mut String) {
         hbs = if hbs.is_empty() { "<li>none</li>".into() } else { hbs }, fin = if fin.is_empty() { "<li>none</li>".into() } else { fin });
 }
 
-fn render_index(m: &Model, o: &mut String) {
+fn render_index(m: &Model<'_>, o: &mut String) {
     let rows = m.agents.iter().enumerate().map(|(i, a)| {
         let latest = match a.latest { Some(l) => { let x = &a.events[l]; format!("#{} {}: {}", x.n, esc(x.ty), esc(&first(&x.e.summary, 120))) } None => String::new() };
         format!("<tr><td>{}</td><td><a href=\"#{}\">{}: {}</a></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
@@ -258,7 +275,7 @@ fn render_index(m: &Model, o: &mut String) {
 </tbody></table></section>"#, m.agents.len());
 }
 
-fn render_event(a: &MAgent, x: &MEvent, o: &mut String) {
+fn render_event(a: &MAgent<'_>, x: &MEvent<'_>, o: &mut String) {
     let e = &x.e;
     let tool_span = if js::truthy(e.tool.as_ref()) { format!(" <span class=\"tool\">{}</span>", esc(&e.tool_str())) } else { String::new() };
     let head = format!("<span class=\"evn\">#{}</span> <span class=\"evtype\">{}</span>{tool_span} <span class=\"signal\">[{}]</span> <time datetime=\"{}\">{}</time>", x.n, esc(x.ty), x.signal, iso(x.t), hm(x.t));
@@ -270,51 +287,59 @@ fn render_event(a: &MAgent, x: &MEvent, o: &mut String) {
     }
     if e.kind == "tool" {
         let corr = if js::truthy(e.id.as_ref()) { js::string(e.id.as_ref()) } else { format!("{}-c", x.id) };
-        let out = e.output.as_deref().unwrap_or("");
+        let out = e.out().unwrap_or("");
         let out_shown = len16(out);
         let status = if !e.is_done() { "PENDING (no result yet)".to_string() } else if e.is_err() {
             let (s, w) = x.err.as_ref().unwrap(); format!("ERROR · {} ({w})", s.to_ascii_uppercase())
         } else { "OK".into() };
-        let all_imgs = e.images.as_deref().unwrap_or(&[]);
+        let all_imgs = e.imgs().unwrap_or(&[]);
         let imgs: Vec<_> = all_imgs.iter().filter(|im| !im.data.is_empty()).collect();
-        let input = e.input.clone().unwrap_or(Value::Object(Default::default()));
+        static EMPTY: std::sync::LazyLock<Value> = std::sync::LazyLock::new(|| Value::Object(Default::default()));
+        let input: &Value = e.input.as_ref().unwrap_or(&EMPTY);
         let in_compact = match &e.input { Some(v) => js::json(v), None => String::new() };
         let in_note = elision_note(&in_compact);
         let cn = clip_note(out_shown, e.output_len, "Output");
         let on = elision_note(out);
-        let figs: String = imgs.iter().enumerate().map(|(k, im)| format!(
-            "<figure><img loading=\"lazy\" alt=\"Image {} of {} returned by {} in event #{} ({}, about {} KB)\" src=\"/api/image/{}/{}/{}\"><figcaption>Image {} of {} from event #{} ({}: {})</figcaption></figure>",
-            k + 1, imgs.len(), esc(&e.tool_str()), x.n, esc(&im.media_type), js::num(js::round(len16(&im.data) as f64 * 0.75 / 1024.0)),
-            js::encode_uri_component(&a.s.id), x.n - 1, k, k + 1, imgs.len(), x.n, esc(&e.tool_str()), esc(&first(&e.summary, 80)))).collect();
+        let c = esc(&corr);
         let _ = write!(o, "<div {attrs} data-correlation-id=\"{c}\">
-<p class=\"evhead\">{head} · {sum}</p>
+<p class=\"evhead\">{head} · {}</p>
 <div class=\"pair\">
-<div class=\"call\" id=\"{id}-call\" data-correlation-id=\"{c}\"><p class=\"lbl\">Tool call · correlation id <code>{c}</code></p>{pin}{inn}</div>
-<div class=\"result\" id=\"{id}-result\" data-correlation-id=\"{c}\"><p class=\"lbl\">Tool result · {st}{took}{chars}</p>
-{body}
-{cn}{on}
-{figs}
-{notkept}
-</div></div></div>",
-            c = esc(&corr), sum = esc(&e.summary), id = x.id, pin = pre(&js::json_pretty(&input), ""),
-            inn = if in_note.is_empty() { String::new() } else { format!("<p class=\"clip\">Input {} (strings over 4000 characters are trimmed, head and tail kept).</p>", esc(&in_note)) },
-            st = esc(&status),
-            took = match e.duration_ms { Some(Some(d)) => format!(" · took {}", dur(d)), _ => String::new() },
-            chars = match e.output_len { Some(n) => format!(" · {n} characters"), None => String::new() },
-            body = if e.is_done() { pre(out, if e.is_err() { "bad" } else { "" }) } else { "<p>no result yet</p>".into() },
-            cn = if cn.is_empty() { String::new() } else { format!("<p class=\"clip\">{}</p>", esc(&cn)) },
-            on = if on.is_empty() { String::new() } else { format!("<p class=\"clip\">Output {}.</p>", esc(&on)) },
-            notkept = if all_imgs.len() > imgs.len() { format!("<p class=\"clip\">{} image(s) not kept (over 600 KB).</p>", all_imgs.len() - imgs.len()) } else { String::new() });
+<div class=\"call\" id=\"{id}-call\" data-correlation-id=\"{c}\"><p class=\"lbl\">Tool call · correlation id <code>{c}</code></p>",
+            esc(&e.summary), id = x.id);
+        pre_into(o, &js::json_pretty(input), "");
+        if !in_note.is_empty() { let _ = write!(o, "<p class=\"clip\">Input {} (strings over 4000 characters are trimmed, head and tail kept).</p>", esc(&in_note)); }
+        let _ = write!(o, "</div>
+<div class=\"result\" id=\"{id}-result\" data-correlation-id=\"{c}\"><p class=\"lbl\">Tool result · {}", esc(&status), id = x.id);
+        if let Some(Some(d)) = e.duration_ms { let _ = write!(o, " · took {}", dur(d)); }
+        if let Some(n) = e.output_len { let _ = write!(o, " · {n} characters"); }
+        o.push_str("</p>
+");
+        if e.is_done() { pre_into(o, out, if e.is_err() { "bad" } else { "" }); } else { o.push_str("<p>no result yet</p>"); }
+        o.push('\n');
+        if !cn.is_empty() { let _ = write!(o, "<p class=\"clip\">{}</p>", esc(&cn)); }
+        if !on.is_empty() { let _ = write!(o, "<p class=\"clip\">Output {}.</p>", esc(&on)); }
+        o.push('\n');
+        for (k, im) in imgs.iter().enumerate() {
+            let _ = write!(o, "<figure><img loading=\"lazy\" alt=\"Image {} of {} returned by {} in event #{} ({}, about {} KB)\" src=\"/api/image/{}/{}/{}\"><figcaption>Image {} of {} from event #{} ({}: {})</figcaption></figure>",
+                k + 1, imgs.len(), esc(&e.tool_str()), x.n, esc(&im.media_type), js::num(js::round(len16(&im.data) as f64 * 0.75 / 1024.0)),
+                js::encode_uri_component(&a.s.id), x.n - 1, k, k + 1, imgs.len(), x.n, esc(&e.tool_str()), esc(&first(&e.summary, 80)));
+        }
+        o.push('\n');
+        if all_imgs.len() > imgs.len() { let _ = write!(o, "<p class=\"clip\">{} image(s) not kept (over 600 KB).</p>", all_imgs.len() - imgs.len()); }
+        o.push_str("
+</div></div></div>");
         return;
     }
-    let text = [e.text.as_deref(), e.output.as_deref(), Some(e.summary.as_str())].into_iter().flatten().find(|s| !s.is_empty()).unwrap_or("");
+    let text = [e.text.as_deref(), e.out(), Some(e.summary.as_str())].into_iter().flatten().find(|s| !s.is_empty()).unwrap_or("");
     let err_line = match &x.err { Some((s, w)) => format!("<p class=\"lbl\">Error status: {} ({})</p>", esc(&s.to_ascii_uppercase()), esc(w)), None => String::new() };
     let en = elision_note(text);
-    let _ = write!(o, "<div {attrs}><p class=\"evhead\">{head}</p>{err_line}{}{}</div>", pre(text, if e.is_err() { "bad" } else { "msg" }),
-        if en.is_empty() { String::new() } else { format!("<p class=\"clip\">{} (long messages keep head and tail).</p>", esc(&en)) });
+    let _ = write!(o, "<div {attrs}><p class=\"evhead\">{head}</p>{err_line}");
+    pre_into(o, text, if e.is_err() { "bad" } else { "msg" });
+    if !en.is_empty() { let _ = write!(o, "<p class=\"clip\">{} (long messages keep head and tail).</p>", esc(&en)); }
+    o.push_str("</div>");
 }
 
-fn render_agent(a: &MAgent, o: &mut String) {
+fn render_agent(a: &MAgent<'_>, o: &mut String) {
     let s = &a.s;
     let elapsed = dur(s.last_event_at.unwrap_or(0.0) - s.started_at.unwrap_or(0.0));
     let meta = format!("{}: {} · status {} · elapsed {elapsed} · {} tool calls · {} errors · last activity {}",
@@ -352,35 +377,55 @@ fn render_agent(a: &MAgent, o: &mut String) {
     o.push_str("\n</section></article>");
 }
 
-pub fn render_body(m: &Model) -> String {
-    let mut o = String::with_capacity(64 * 1024);
-    render_snapshot(m, &mut o);
+impl Model<'_> {
+    /// Rough output size, so a page is built in one allocation.
+    fn size_hint(&self) -> usize {
+        self.agents.iter().map(|a| a.prompt.len() + a.s.final_text.len() + 2048
+            + a.events.iter().map(|x| 700 + x.e.summary.len() + x.e.text.as_ref().map_or(0, |t| t.len())
+                + x.e.out().map_or(0, |t| t.len() + t.len() / 16) + x.e.input.as_ref().map_or(0, |_| 256)).sum::<usize>()).sum::<usize>() + 32 * 1024
+    }
+}
+
+fn render_body_into(m: &Model<'_>, o: &mut String) {
+    render_snapshot(m, o);
     o.push('\n');
-    render_index(m, &mut o);
+    render_index(m, o);
     o.push_str("\n<div id=\"agents\">");
     for (i, a) in m.agents.iter().enumerate() {
         if i > 0 { o.push('\n'); }
-        render_agent(a, &mut o);
+        render_agent(a, o);
     }
     o.push_str("</div>");
+}
+
+pub fn render_body(m: &Model<'_>) -> String {
+    let mut o = String::with_capacity(m.size_hint());
+    render_body_into(m, &mut o);
     o
 }
 
-pub fn render_page(m: &Model) -> String {
+pub fn render_page(m: &Model<'_>) -> String {
     let (pre_, post) = PAGE.split_once("@@BODY@@").expect("page shell has a body marker");
     let fill = |s: &str| s.replace("@@VERSION@@", &m.version).replace("@@SCHEMA@@", SCHEMA_VERSION).replace("@@NOW@@", &iso(Some(m.now)));
-    let body = render_body(m);
-    let mut o = String::with_capacity(PAGE.len() + body.len());
+    let mut o = String::with_capacity(PAGE.len() + m.size_hint());
     o.push_str(&fill(pre_));
-    o.push_str(&body);
+    render_body_into(m, &mut o);
     o.push_str(&fill(post));
     o
 }
 
 // ---------------------------------------------------------------- text snapshot
 
-pub fn snapshot_text(m: &Model) -> String {
-    let mut l: Vec<String> = vec![];
+/// Lines joined with "\n", written straight into one buffer.
+struct Lines(String, bool);
+
+impl Lines {
+    fn push(&mut self, s: impl AsRef<str>) { if self.1 { self.0.push('\n'); } self.1 = true; self.0.push_str(s.as_ref()); }
+    fn extend<S: AsRef<str>>(&mut self, it: impl IntoIterator<Item = S>) { for s in it { self.push(s); } }
+}
+
+pub fn snapshot_text(m: &Model<'_>) -> String {
+    let mut l = Lines(String::with_capacity(m.size_hint()), false);
     let bar = "=".repeat(80);
     l.extend([WATCHKEEPER_PROTOCOL.to_string(), String::new(), bar.clone(), format!("AGENT WATCH COLLECTION SNAPSHOT · version {} · schema {SCHEMA_VERSION} · rendered {}", m.version, iso(Some(m.now))), bar]);
     let main = match m.main { Some(i) => { let a = &m.agents[i].s; format!("{} · last activity {} · {} tool calls", a.status, iso(a.last_event_at), a.tool_count) } None => "not tracked".into() };
@@ -410,14 +455,14 @@ pub fn snapshot_text(m: &Model) -> String {
             format!("started {} · last {} · {} tool calls · {} errors", iso(a.s.started_at), iso(a.s.last_event_at), a.s.tool_count, a.s.error_count),
             "### Prompt (untrusted observed data)".into(), if a.prompt.is_empty() { "(none)".into() } else { a.prompt.clone() }]);
         if a.s.kind == "agent" { l.extend(["### Final handback".into(), if a.s.final_text.is_empty() { "(none yet)".into() } else { a.s.final_text.clone() }]); }
-        l.push("### Timeline".into());
+        l.push("### Timeline");
         for x in &a.events {
             let e = &x.e;
             let tool = if js::truthy(e.tool.as_ref()) { format!(" {}", e.tool_str()) } else { String::new() };
             let h = format!("#{} [{}{tool}] [{}] {}", x.n, x.ty, x.signal, iso(x.t));
             if x.ty == "Thought" { l.push(format!("{h} thinking")); continue; }
             if e.kind == "tool" {
-                let out = e.output.as_deref().unwrap_or("");
+                let out = e.out().unwrap_or("");
                 let st = if !e.is_done() { "pending".to_string() } else if e.is_err() { let (s, w) = x.err.as_ref().unwrap(); format!("error, {s}: {w}") } else { "ok".into() };
                 let ol = e.output_len.unwrap_or(0);
                 let id = if js::truthy(e.id.as_ref()) { js::string(e.id.as_ref()) } else { String::new() };
@@ -427,10 +472,10 @@ pub fn snapshot_text(m: &Model) -> String {
                     if len16(out) < ol { format!(", CLIPPED to {}", len16(out)) } else { String::new() }));
             } else {
                 l.push(format!("{h}{}", match &x.err { Some((s, _)) => format!(" error {s}"), None => String::new() }));
-                let text = [e.text.as_deref(), e.output.as_deref(), Some(e.summary.as_str())].into_iter().flatten().find(|s| !s.is_empty()).unwrap_or("");
+                let text = [e.text.as_deref(), e.out(), Some(e.summary.as_str())].into_iter().flatten().find(|s| !s.is_empty()).unwrap_or("");
                 l.push(format!("  {}", text.replace('\n', "\n  ")));
             }
         }
     }
-    l.join("\n")
+    l.0
 }

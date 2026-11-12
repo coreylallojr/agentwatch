@@ -53,7 +53,7 @@ pub struct App {
     closed: AtomicBool,
     pid_path: PathBuf,
     pub port: u16,
-    scan_tx: Mutex<Option<mpsc::Sender<()>>>,
+    scan_tx: Mutex<Option<mpsc::Sender<Option<Vec<PathBuf>>>>>,
 }
 
 pub struct Handle { pub app: Arc<App> }
@@ -172,16 +172,17 @@ fn route(app: &App, path: &str, q: &url::Url) -> Result<Resp, String> {
         return Ok(Resp { status: 200, ctype: Some("text/html; charset=utf-8"), cache: Some("no-store"), body: INDEX_HTML.as_bytes().to_vec() });
     }
     if path == "/collection" || path == "/api/collection/snapshot.txt" {
-        let model = app.with_store(|s| {
+        // Rendered while holding the store lock: the model borrows the stored events instead of copying them.
+        let txt = path.ends_with(".txt");
+        let fragment = param("fragment").as_deref() == Some("1");
+        let body = app.with_store(|s| {
             let st = s.state(&session, true, project.as_deref());
             let now = now_ms();
-            collection::build_model(&st, |id| s.builder(id), now)
+            let m = collection::build_model(st, |id| s.builder(id), now);
+            if txt { collection::snapshot_text(&m) } else if fragment { collection::render_body(&m) } else { collection::render_page(&m) }
         });
-        if path.ends_with(".txt") {
-            return Ok(Resp { status: 200, ctype: Some("text/plain; charset=utf-8"), cache: Some("no-store"), body: collection::snapshot_text(&model).into_bytes() });
-        }
-        let html = if param("fragment").as_deref() == Some("1") { collection::render_body(&model) } else { collection::render_page(&model) };
-        return Ok(Resp { status: 200, ctype: Some("text/html; charset=utf-8"), cache: Some("no-store"), body: html.into_bytes() });
+        let ctype = if txt { "text/plain; charset=utf-8" } else { "text/html; charset=utf-8" };
+        return Ok(Resp { status: 200, ctype: Some(ctype), cache: Some("no-store"), body: body.into_bytes() });
     }
     if let Some(rest) = path.strip_prefix("/api/image/") {
         let parts: Vec<String> = rest.split('/').map(js::decode_uri_component).collect::<Result<_, _>>()?;
@@ -217,6 +218,7 @@ fn route(app: &App, path: &str, q: &url::Url) -> Result<Resp, String> {
 }
 
 fn handle_conn(app: Arc<App>, mut s: TcpStream) {
+    sys::set_thread_qos(true);
     let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = s.set_nodelay(true);
     let mut buf: Vec<u8> = Vec::with_capacity(4096);
@@ -312,37 +314,57 @@ pub fn start(opts: ServerOpts) -> Result<Handle, StartError> {
     }
     app.with_store(|s| s.scan());
 
-    // scanner: fs watcher (60 ms debounce) + 1 s poll + 5 s tick
-    let (tx, rx) = mpsc::channel::<()>();
+    // scanner. With a working watcher: changed paths are re-read directly (60 ms quiet-period debounce, but never
+    // more than 200 ms behind under a continuous write stream) and a full scan runs every 5 s as a safety net.
+    // Without a watcher: a full scan every 1 s, as in the Node version. Status tick every 5 s.
+    let (tx, rx) = mpsc::channel::<Option<Vec<PathBuf>>>();
     *app.scan_tx.lock().unwrap() = Some(tx.clone());
     let watcher = {
         let tx = tx.clone();
-        notify::recommended_watcher(move |_res: notify::Result<notify::Event>| { let _ = tx.send(()); }).ok().and_then(|mut w| {
+        notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            let _ = tx.send(match res { Ok(ev) if !ev.need_rescan() && !ev.paths.is_empty() => Some(ev.paths), _ => None });
+        }).ok().and_then(|mut w| {
             use notify::Watcher;
             w.watch(&projects_root, notify::RecursiveMode::Recursive).ok().map(|_| w)
         })
     };
     drop(tx);
+    let poll_every = if watcher.is_some() { Duration::from_secs(5) } else { Duration::from_secs(1) };
     {
         let app = app.clone();
         std::thread::spawn(move || {
             let _watcher = watcher; // keep alive for the life of the scanner
-            let mut next_poll = Instant::now() + Duration::from_secs(1);
+            sys::set_thread_qos(false);
+            let mut next_poll = Instant::now() + poll_every;
             let mut next_tick = Instant::now() + Duration::from_secs(5);
-            let mut debounce: Option<Instant> = None;
+            let mut quiet: Option<Instant> = None;
+            let mut deadline: Option<Instant> = None;
+            let mut pending: Vec<PathBuf> = vec![];
+            let mut full = false;
             loop {
                 if app.is_closed() { break; }
                 let now = Instant::now();
                 let mut wake = next_poll.min(next_tick);
-                if let Some(d) = debounce { wake = wake.min(d); }
+                if let (Some(q), Some(d)) = (quiet, deadline) { wake = wake.min(q.min(d)); }
                 match rx.recv_timeout(wake.saturating_duration_since(now)) {
-                    Ok(()) => { debounce = Some(Instant::now() + Duration::from_millis(60)); continue; }
+                    Ok(paths) => {
+                        match paths { Some(p) => { for x in p { if !pending.contains(&x) { pending.push(x); } } } None => full = true }
+                        let t = Instant::now();
+                        quiet = Some(t + Duration::from_millis(60));
+                        deadline.get_or_insert(t + Duration::from_millis(200));
+                        continue;
+                    }
                     Err(mpsc::RecvTimeoutError::Disconnected) if app.is_closed() => break,
                     Err(_) => {}
                 }
                 let now = Instant::now();
-                if debounce.map(|d| now >= d).unwrap_or(false) { debounce = None; app.with_store(|s| s.scan()); }
-                if now >= next_poll { next_poll = now + Duration::from_secs(1); app.with_store(|s| s.scan()); }
+                if quiet.is_some() && (quiet.map(|q| now >= q).unwrap_or(false) || deadline.map(|d| now >= d).unwrap_or(false)) {
+                    quiet = None; deadline = None;
+                    let paths = std::mem::take(&mut pending);
+                    let need_full = std::mem::take(&mut full);
+                    app.with_store(|s| { if need_full || !s.on_paths(&paths) { s.scan(); } });
+                }
+                if now >= next_poll { next_poll = now + poll_every; app.with_store(|s| s.scan()); }
                 if now >= next_tick { next_tick = now + Duration::from_secs(5); app.with_store(|s| s.tick()); }
             }
         });
@@ -351,6 +373,7 @@ pub fn start(opts: ServerOpts) -> Result<Handle, StartError> {
     {
         let app = app.clone();
         std::thread::spawn(move || {
+            sys::set_thread_qos(false);
             let mut n = 0u64;
             loop {
                 std::thread::sleep(Duration::from_secs(15));
