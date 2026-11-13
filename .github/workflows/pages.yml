@@ -4,7 +4,7 @@ name: pages
 # One-time setup: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 on:
   push:
-    branches: [main]
+    branches: [main]   # the github-pages environment only accepts deployments from the default branch
     paths: ['docs/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
