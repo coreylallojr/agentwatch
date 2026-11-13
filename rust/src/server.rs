@@ -315,21 +315,27 @@ pub fn start(opts: ServerOpts) -> Result<Handle, StartError> {
     app.with_store(|s| s.scan());
 
     // scanner. With a working watcher: changed paths are re-read directly (60 ms quiet-period debounce, but never
-    // more than 200 ms behind under a continuous write stream) and a full scan runs every 5 s as a safety net.
+    // more than 200 ms behind under a continuous write stream) plus a periodic full scan as a safety net.
     // Without a watcher: a full scan every 1 s, as in the Node version. Status tick every 5 s.
     let (tx, rx) = mpsc::channel::<Option<Vec<PathBuf>>>();
     *app.scan_tx.lock().unwrap() = Some(tx.clone());
     let watcher = {
         let tx = tx.clone();
         notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            let _ = tx.send(match res { Ok(ev) if !ev.need_rescan() && !ev.paths.is_empty() => Some(ev.paths), _ => None });
+            // A new directory means a full scan: with per-directory watchers (inotify on Linux) files created in it
+            // before its watch is attached produce no events of their own.
+            let new_dir = |ev: &notify::Event| matches!(ev.kind, notify::EventKind::Create(_)) && ev.paths.iter().any(|p| p.is_dir());
+            let _ = tx.send(match res { Ok(ev) if !ev.need_rescan() && !ev.paths.is_empty() && !new_dir(&ev) => Some(ev.paths), _ => None });
         }).ok().and_then(|mut w| {
             use notify::Watcher;
             w.watch(&projects_root, notify::RecursiveMode::Recursive).ok().map(|_| w)
         })
     };
     drop(tx);
-    let poll_every = if watcher.is_some() { Duration::from_secs(5) } else { Duration::from_secs(1) };
+    // Recursive watchers (Windows, macOS) are trusted with a 5 s safety net; inotify (Linux) watches directory by
+    // directory and can miss files in brand-new folders, so there the 1 s full scan of the Node version stays.
+    let recursive_watcher = cfg!(any(windows, target_os = "macos"));
+    let poll_every = if watcher.is_some() && recursive_watcher { Duration::from_secs(5) } else { Duration::from_secs(1) };
     {
         let app = app.clone();
         std::thread::spawn(move || {

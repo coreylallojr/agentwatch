@@ -16,8 +16,8 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
@@ -38,10 +38,23 @@ jobs:
           bin=rust/target/release/agentwatch
           [ -f "$bin.exe" ] && bin="$bin.exe"
           now=$(node parity/fixtures.mjs .parity-fx)
-          node parity/run.mjs --projects .parity-fx --now "$now" --bin "$bin"
-          node parity/http.mjs --projects .parity-fx --bin "$bin"
-          node parity/live.mjs --bin "$bin"
-          node parity/mcp.mjs --bin "$bin"
+          fail=0
+          # each check's tail becomes an annotation on failure, so it is readable on the public run page
+          check() {
+            name=$1; shift
+            if "$@" > "out-$name.txt" 2>&1; then echo "ok   $name: $(tail -n 1 "out-$name.txt")"
+            else
+              fail=1
+              echo "FAIL $name"; cat "out-$name.txt"
+              msg=$(tail -n 40 "out-$name.txt" | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
+              echo "::error title=${name} failed on ${{ runner.os }}::${msg}"
+            fi
+          }
+          check dump node parity/run.mjs --projects .parity-fx --now "$now" --bin "$bin"
+          check http node parity/http.mjs --projects .parity-fx --bin "$bin"
+          check live node parity/live.mjs --bin "$bin"
+          check mcp  node parity/mcp.mjs --bin "$bin"
+          exit $fail
       - name: Plugin manifest
         if: runner.os == 'Linux'
         run: |
