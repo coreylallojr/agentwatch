@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="agentwatch logo">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5fa8ff"/>
+      <stop offset="0.48" stop-color="#1f6fe0"/>
+      <stop offset="1" stop-color="#0b3d9c"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".75"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="iris" cx=".42" cy=".38" r=".7">
+      <stop offset="0" stop-color="#b8ffb0"/>
+      <stop offset=".45" stop-color="#3cc84a"/>
+      <stop offset="1" stop-color="#11782a"/>
+    </radialGradient>
+    <clipPath id="eye"><path d="M8 32 C18 16 46 16 56 32 C46 48 18 48 8 32 Z"/></clipPath>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="url(#tile)" stroke="#0a2f78" stroke-width="2"/>
+  <path d="M8 32 C18 16 46 16 56 32 C46 48 18 48 8 32 Z" fill="#f4f9ff" stroke="#0a2f78" stroke-width="2"/>
+  <g clip-path="url(#eye)">
+    <circle cx="32" cy="32" r="11" fill="url(#iris)" stroke="#0d5a20" stroke-width="1.5"/>
+    <circle cx="32" cy="32" r="4.5" fill="#06210c"/>
+    <path d="M32 32 L32 19 A13 13 0 0 1 43 26 Z" fill="#fff" opacity=".35">
+      <animateTransform attributeName="transform" type="rotate" from="0 32 32" to="360 32 32" dur="4s" repeatCount="indefinite"/>
+    </path>
+    <circle cx="28.5" cy="28" r="2.4" fill="#fff"/>
+  </g>
+  <path d="M6 15 C6 8 10 5 17 5 H47 C54 5 58 8 58 15 C48 22 16 22 6 15 Z" fill="url(#gloss)"/>
+</svg>

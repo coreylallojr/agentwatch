@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentwatch · watch your Claude Code subagents</title>
+<meta name="description" content="A local dashboard and MCP tools for watching Claude Code sessions and subagents. Zero tokens to collect, one small Rust binary, redacted, read-only.">
+<meta name="theme-color" content="#0a5ee0">
+<meta property="og:title" content="agentwatch: watch your Claude Code subagents">
+<meta property="og:description" content="Live lanes for every subagent, readable errors, and MCP tools so Claude can wait for its own agents. Zero tokens. One binary.">
+<meta property="og:image" content="https://coreylallojr.github.io/agentwatch/img/dashboard.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/vendor/xp.css">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- original icon sprite (no Microsoft artwork) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7cc0ff"/><stop offset="1" stop-color="#1550c8"/></linearGradient>
+    <linearGradient id="gGreen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9df08a"/><stop offset="1" stop-color="#1f8f2f"/></linearGradient>
+    <linearGradient id="gGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff2a8"/><stop offset="1" stop-color="#e09a12"/></linearGradient>
+    <linearGradient id="gRed" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb3a0"/><stop offset="1" stop-color="#c8341b"/></linearGradient>
+    <linearGradient id="gPurple" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9b8ff"/><stop offset="1" stop-color="#6b2fc9"/></linearGradient>
+    <linearGradient id="gGray" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#b9c2cf"/></linearGradient>
+  </defs>
+  <symbol id="i-disk" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" rx="3" fill="url(#gBlue)" stroke="#0b3a8f"/><rect x="8" y="3" width="16" height="10" fill="#e8f1ff" stroke="#0b3a8f"/><rect x="19" y="5" width="3" height="6" fill="#0b3a8f"/><rect x="7" y="17" width="18" height="10" rx="1" fill="#fff" stroke="#0b3a8f"/><path d="M10 21h12M10 24h8" stroke="#7aa" /></symbol>
+  <symbol id="i-photos" viewBox="0 0 32 32"><rect x="2" y="6" width="28" height="21" rx="2" fill="url(#gGold)" stroke="#8a5a00"/><rect x="5" y="9" width="22" height="15" fill="#bfe3ff" stroke="#8a5a00"/><path d="M5 24l7-8 5 5 4-3 6 6z" fill="url(#gGreen)"/><circle cx="22" cy="13" r="2.5" fill="#fff59b"/></symbol>
+  <symbol id="i-robot" viewBox="0 0 32 32"><rect x="6" y="9" width="20" height="16" rx="4" fill="url(#gGray)" stroke="#556"/><circle cx="12" cy="17" r="3" fill="url(#gBlue)"/><circle cx="20" cy="17" r="3" fill="url(#gBlue)"/><path d="M16 9V4" stroke="#556" stroke-width="2"/><circle cx="16" cy="4" r="2" fill="url(#gRed)"/><rect x="11" y="22" width="10" height="2" fill="#556"/></symbol>
+  <symbol id="i-help" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="url(#gBlue)" stroke="#0b3a8f"/><path d="M12 12a4 4 0 1 1 6 3.5c-1.5 1-2 1.6-2 3.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="16" cy="23.5" r="1.8" fill="#fff"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="url(#gBlue)" stroke="#0b3a8f"/><path d="M8 11c4 1 5 4 3 7s1 5 3 7M19 4c-1 3 1 5 4 5s4 3 3 6" fill="none" stroke="url(#gGreen)" stroke-width="4" stroke-linecap="round"/></symbol>
+  <symbol id="i-book" viewBox="0 0 32 32"><path d="M4 6c5-2 9-1 12 2v19c-3-3-7-4-12-2z" fill="url(#gRed)" stroke="#7a1a0a"/><path d="M28 6c-5-2-9-1-12 2v19c3-3 7-4 12-2z" fill="url(#gRed)" stroke="#7a1a0a"/><path d="M7 10c3-1 5 0 7 1M7 14c3-1 5 0 7 1M18 11c2-1 4-2 7-1M18 15c2-1 4-2 7-1" stroke="#fff" opacity=".8"/></symbol>
+  <symbol id="i-cmd" viewBox="0 0 32 32"><rect x="2" y="5" width="28" height="22" rx="2" fill="#111" stroke="#666"/><rect x="2" y="5" width="28" height="5" fill="url(#gBlue)"/><path d="M6 15l4 3-4 3" stroke="#bfb" stroke-width="2" fill="none"/><path d="M12 21h7" stroke="#bfb" stroke-width="2"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 32 32"><rect x="3" y="4" width="26" height="20" rx="2" fill="url(#gGray)" stroke="#556"/><rect x="6" y="7" width="20" height="14" fill="url(#gBlue)"/><path d="M8 18l4-5 3 3 4-6 5 8" stroke="#fff" stroke-width="2" fill="none"/><rect x="11" y="24" width="10" height="4" fill="#889"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 64 64"><rect x="2" y="2" width="60" height="60" rx="13" fill="url(#gBlue)" stroke="#0a2f78" stroke-width="2"/><path d="M8 32C18 16 46 16 56 32 46 48 18 48 8 32Z" fill="#f4f9ff" stroke="#0a2f78" stroke-width="2"/><circle cx="32" cy="32" r="10" fill="url(#gGreen)"/><circle cx="32" cy="32" r="4.5" fill="#06210c"/><circle cx="28.5" cy="28" r="2.4" fill="#fff"/></symbol>
+  <symbol id="i-zero" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="url(#gGold)" stroke="#8a5a00"/><text x="16" y="22" text-anchor="middle" font-family="Trebuchet MS,Verdana" font-weight="bold" font-size="17" fill="#6a3d00">0</text></symbol>
+  <symbol id="i-lanes" viewBox="0 0 32 32"><rect x="3" y="4" width="26" height="24" rx="2" fill="#fff" stroke="#556"/><rect x="6" y="8" width="9" height="4" rx="2" fill="#2f6fed"/><rect x="6" y="15" width="9" height="4" rx="2" fill="#8b5cf6"/><rect x="6" y="22" width="9" height="4" rx="2" fill="#1f9d55"/><path d="M18 10h8M18 17h6M18 24h7" stroke="#99a" stroke-width="2"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 32 32"><path d="M21 3a7 7 0 0 0-6 9L4 23l5 5 11-11a7 7 0 0 0 9-6l-4 4-4-1-1-4z" fill="url(#gGray)" stroke="#556"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 32 32"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z" fill="url(#gGreen)" stroke="#0d5a20"/><path d="M11 16l4 4 7-8" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 32 32"><path d="M18 2L6 18h8l-2 12 14-17h-9z" fill="url(#gGold)" stroke="#8a5a00"/></symbol>
+  <symbol id="i-fork" viewBox="0 0 32 32"><circle cx="9" cy="6" r="3.5" fill="url(#gPurple)" stroke="#3b1580"/><circle cx="23" cy="6" r="3.5" fill="url(#gPurple)" stroke="#3b1580"/><circle cx="16" cy="26" r="3.5" fill="url(#gPurple)" stroke="#3b1580"/><path d="M9 10v3c0 4 7 4 7 8M23 10v3c0 4-7 4-7 8" stroke="#3b1580" stroke-width="2" fill="none"/></symbol>
+  <symbol id="i-page" viewBox="0 0 32 32"><path d="M7 3h13l6 6v20H7z" fill="#fff" stroke="#556"/><path d="M20 3v6h6" fill="url(#gGray)" stroke="#556"/><path d="M10 13h12M10 17h12M10 21h9" stroke="#2f6fed" stroke-width="2"/></symbol>
+  <symbol id="i-star" viewBox="0 0 32 32"><path d="M16 3l4 8.5 9.3 1.2-6.8 6.4 1.7 9.2L16 23.8 7.8 28.3l1.7-9.2L2.7 12.7 12 11.5z" fill="url(#gGold)" stroke="#8a5a00"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 32 32"><path d="M4 9c4-3 8 2 12-1v14c-4 3-8-2-12 1z" fill="#2f6fed"/><path d="M16 8c4-3 8 2 12-1v14c-4 3-8-2-12 1z" fill="#e0472b"/><path d="M4 23c4-3 8 2 12-1v4c-4 3-8-2-12 1z" fill="#1f9d55" opacity=".0"/><path d="M4 16c4-3 8 2 12-1M16 15c4-3 8 2 12-1" stroke="#fff" stroke-width=".6" opacity=".5"/></symbol>
+</svg>
+
+<div class="ticker" aria-hidden="true"><div class="ticker-track">
+  <span>★ Welcome to the agentwatch homepage! ★ NEW: rewritten in Rust, one small binary ★ <b>agentwatch_wait</b> lets Claude wait for its own subagents instead of polling ★ redacts emails, tokens and secrets ★ Windows · macOS · Linux ★ sign the guestbook! ★</span>
+  <span>★ Welcome to the agentwatch homepage! ★ NEW: rewritten in Rust, one small binary ★ <b>agentwatch_wait</b> lets Claude wait for its own subagents instead of polling ★ redacts emails, tokens and secrets ★ Windows · macOS · Linux ★ sign the guestbook! ★</span>
+</div></div>
+
+<nav class="desk-icons" aria-label="Desktop shortcuts">
+  <a href="#install" data-open="install"><svg><use href="#i-disk"/></svg><span>Install</span></a>
+  <a href="#gallery" data-open="gallery"><svg><use href="#i-photos"/></svg><span>Screenshots</span></a>
+  <a href="#agents" data-open="agents"><svg><use href="#i-robot"/></svg><span>For AI agents</span></a>
+  <a href="#terminal" data-open="terminal"><svg><use href="#i-cmd"/></svg><span>Demo</span></a>
+  <a href="#help" data-open="help"><svg><use href="#i-help"/></svg><span>Help</span></a>
+  <a href="https://github.com/coreylallojr/agentwatch"><svg><use href="#i-globe"/></svg><span>GitHub</span></a>
+  <a href="#guestbook" data-open="guestbook"><svg><use href="#i-book"/></svg><span>Guestbook</span></a>
+</nav>
+
+<main id="main" class="stack">
+
+  <!-- hero -->
+  <section class="window win hero" id="hero" data-win="agentwatch.exe" data-icon="i-eye" aria-labelledby="hero-title">
+    <div class="title-bar">
+      <div class="title-bar-text"><svg class="tb-icon"><use href="#i-eye"/></svg>agentwatch.exe</div>
+      <div class="title-bar-controls"><button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button></div>
+    </div>
+    <div class="window-body">
+      <div class="hero-grid">
+        <img class="hero-logo" src="img/logo.svg" width="128" height="128" alt="">
+        <div>
+          <h1 id="hero-title" class="wordart" data-text="agentwatch">agentwatch</h1>
+          <p class="tagline">Watch your <b>Claude Code</b> sessions and subagents, live. Zero tokens to collect. One small binary. MCP tools so Claude can check on its own agents.</p>
+          <div class="cta">
+            <a class="glossy primary" id="dl" href="https://github.com/coreylallojr/agentwatch/releases/latest"><svg><use href="#i-disk"/></svg><span><b>Download</b><small id="dl-os">for your system</small></span></a>
+            <a class="glossy" href="#gallery" data-open="gallery"><svg><use href="#i-photos"/></svg><span><b>Screenshots</b><small>see it in action</small></span></a>
+            <a class="glossy" href="https://github.com/coreylallojr/agentwatch"><svg><use href="#i-star"/></svg><span><b>Star on GitHub</b><small>MIT licensed</small></span></a>
+          </div>
+        </div>
+      </div>
+      <div class="badges" aria-label="Badges">
+        <span class="b88 rust"><b>RUST</b>powered</span>
+        <span class="b88 mcp"><b>MCP</b>ready</span>
+        <span class="b88 zero"><b>0 TOKENS</b>to collect</span>
+        <span class="b88 light"><b>~50 MB</b>0.8% CPU</span>
+        <span class="b88 xp"><b>XP.css</b>styled</span>
+        <span class="b88 any"><b>BEST VIEWED</b>in any browser</span>
+      </div>
+      <div class="counter" title="GitHub stars, fetched live">
+        <svg><use href="#i-star"/></svg> You are visiting a project with <span class="odometer" id="stars" aria-live="polite">------</span> GitHub stars
+      </div>
+    </div>
+    <div class="status-bar"><p class="status-bar-field">Ready</p><p class="status-bar-field">v0.2.0</p><p class="status-bar-field">MIT</p><p class="status-bar-field">127.0.0.1 only</p></div>
+  </section>
+
+  <!-- install -->
+  <section class="window win" id="install" data-win="Install Wizard" data-icon="i-disk" aria-labelledby="install-title">
+    <div class="title-bar">
+      <div class="title-bar-text"><svg class="tb-icon"><use href="#i-disk"/></svg>Install Wizard</div>
+      <div class="title-bar-controls"><button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button></div>
+    </div>
+    <div class="window-body">
+      <div class="wizard">
+        <div class="wizard-side" aria-hidden="true"><img src="img/logo.svg" alt="" width="72" height="72"><p>Welcome to the agentwatch Setup Wizard</p></div>
+        <div class="wizard-main">
+          <h2 id="install-title">Install in one line</h2>
+          <p>The installer downloads the latest release for your system, checks its SHA-256, puts <code>agentwatch</code> on your PATH, then runs <code>agentwatch setup</code> to add the skills and MCP server to Claude Code. Restart Claude Code and you're done.</p>
+          <section class="tabs">
+            <menu role="tablist" aria-label="Install method">
+              <button role="tab" id="t-win" aria-controls="p-win" aria-selected="true">Windows</button>
+              <button role="tab" id="t-nix" aria-controls="p-nix" aria-selected="false">macOS / Linux</button>
+              <button role="tab" id="t-plugin" aria-controls="p-plugin" aria-selected="false">Claude Code plugin</button>
+              <button role="tab" id="t-src" aria-controls="p-src" aria-selected="false">From source</button>
+            </menu>
+            <article role="tabpanel" id="p-win" aria-labelledby="t-win">
+              <p>In <b>PowerShell</b>:</p>
+              <div class="cmd"><code>irm https://raw.githubusercontent.com/coreylallojr/agentwatch/main/install.ps1 | iex</code><button class="copy">Copy</button></div>
+              <p class="note">Installs to <code>%LOCALAPPDATA%\agentwatch\bin</code> and adds it to your user PATH. No admin rights needed.</p>
+            </article>
+            <article role="tabpanel" id="p-nix" aria-labelledby="t-nix" hidden>
+              <p>In a terminal:</p>
+              <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/coreylallojr/agentwatch/main/install.sh | sh</code><button class="copy">Copy</button></div>
+              <p class="note">Installs to <code>~/.local/bin</code> (set <code>AGENTWATCH_INSTALL_DIR</code> to change it). Apple Silicon, Intel Macs and x86-64 Linux.</p>
+            </article>
+            <article role="tabpanel" id="p-plugin" aria-labelledby="t-plugin" hidden>
+              <p>Inside Claude Code (bundles the skills and MCP server):</p>
+              <div class="cmd"><code>/plugin install agentwatch --marketplace coreylallojr/agentwatch</code><button class="copy">Copy</button></div>
+              <p class="note">The plugin runs the <code>agentwatch</code> binary, so install it first with a one-liner and <code>AGENTWATCH_NO_SETUP=1</code>.</p>
+            </article>
+            <article role="tabpanel" id="p-src" aria-labelledby="t-src" hidden>
+              <p>With a Rust toolchain:</p>
+              <div class="cmd"><code>cargo install --git https://github.com/coreylallojr/agentwatch agentwatch</code><button class="copy">Copy</button></div>
+              <div class="cmd"><code>agentwatch setup</code><button class="copy">Copy</button></div>
+            </article>
+          </section>
+          <fieldset>
+            <legend>Then</legend>
+            <ol class="steps">
+              <li><code>agentwatch</code> opens the dashboard for the project you're in.</li>
+              <li>Ask Claude: <i>"launch two agents to … and wait for them"</i>. It uses <code>agentwatch_wait</code> instead of polling.</li>
+              <li><code>agentwatch status</code> gives the same picture in your terminal.</li>
+            </ol>
+          </fieldset>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- terminal demo -->
+  <section class="window win" id="terminal" data-win="Command Prompt" data-icon="i-cmd" aria-labelledby="terminal-title">
+    <div class="title-bar">
+      <div class="title-bar-text"><svg class="tb-icon"><use href="#i-cmd"/></svg><span id="terminal-title">Command Prompt - agentwatch</span></div>
+      <div class="title-bar-controls"><button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button></div>
+    </div>
+    <div class="window-body console-body">
+      <pre class="console" aria-live="off"><span id="typed"></span></pre>
+      <noscript><pre class="console">PS C:\code\acme-shop&gt; agentwatch status
+acme-shop  5f3c2a9e  last activity 7s ago  5 subagents, 3 active</pre></noscript>
+      <div class="console-actions"><button id="replay">↻ Replay</button><span class="note">Real output from agentwatch, run on a fictional demo project.</span></div>
+    </div>
+  </section>
+
+  <!-- gallery -->
+  <section class="window win" id="gallery" data-win="My Pictures" data-icon="i-photos" aria-labelledby="gallery-title">
+    <div class="title-bar">
+      <div class="title-bar-text"><svg class="tb-icon"><use href="#i-photos"/></svg>My Pictures - agentwatch</div>
+      <div class="title-bar-controls"><button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button></div>
+    </div>
+    <div class="window-body">
+      <h2 id="gallery-title" class="sr-only">Screenshots</h2>
+      <ul class="thumbs">
+        <li><button data-full="img/dashboard.png"><img src="img/dashboard.png" alt="The dashboard: a lane per subagent with status, and the selected agent's tool calls" loading="lazy"><span>Live lanes</span></button></li>
+        <li><button data-full="img/dashboard-report.png"><img src="img/dashboard-report.png" alt="A finished agent's final report rendered as markdown" loading="lazy"><span>Final reports</span></button></li>
+        <li><button data-full="img/dashboard-dark.png"><img src="img/dashboard-dark.png" alt="Dark mode: browser automation calls highlighted, a guard denial, and a screenshot inline" loading="lazy"><span>Dark mode + screenshots</span></button></li>
+        <li><button data-full="img/claude-mcp.png"><img src="img/claude-mcp.png" alt="Claude Code calling agentwatch_status and agentwatch_errors through MCP" loading="lazy"><span>Claude, via MCP</span></button></li>
+        <li><button data-full="img/terminal-status.png"><img src="img/terminal-status.png" alt="agentwatch status in a terminal" loading="lazy"><span>Terminal</span></button></li>
+        <li><button data-full="img/collection.png"><img src="img/collection.png" alt="The Collection page: every agent and event on one server-rendered page" loading="lazy"><span>Collection page</span></button></li>
+      </ul>
+      <p class="note">All screenshots use a fictional project ("acme-shop") generated by <code>docs/tools/demo-projects.mjs</code>. No real transcripts.</p>
+    </div>
+    <div class="status-bar"><p class="status-bar-field">6 objects</p><p class="status-bar-field">Click a picture to enlarge</p></div>
+  </section>
+
+  <!-- features -->
+  <section class="window win" id="features" data-win="Control Panel" data-icon="i-panel" aria-labelledby="features-title">
+    <div class="title-bar">
+      <div class="title-bar-text"><svg class="tb-icon"><use href="#i-panel"/></svg>Control Panel</div>
+      <div class="title-bar-controls"><button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button></div>
+    </div>
+    <div class="window-body">
+      <h2 id="features-title">Pick a category</h2>
+      <ul class="cpl">
+        <li><svg><use href="#i-zero"/></svg><div><h3>Zero tokens</h3><p>Reads the transcripts Claude Code already writes. Watching costs nothing.</p></div></li>
+        <li><svg><use href="#i-lanes"/></svg><div><h3>Live lanes</h3><p>Running, thinking, stale, stuck or done, for every subagent, updated in about 100 ms.</p></div></li>
+        <li><svg><use href="#i-page"/></svg><div><h3>Every tool call</h3><p>Inputs, outputs, durations and screenshots, with long output trimmed head-and-tail.</p></div></li>
+        <li><svg><use href="#i-wrench"/></svg><div><h3>Errors that make sense</h3><p>Each failure is recovered, unresolved, still working, or blocked by a hook.</p></div></li>
+        <li><svg><use href="#i-robot"/></svg><div><h3>MCP for your agents</h3><p>Claude waits for its own subagents and reads their timelines, without polling.</p></div></li>
+        <li><svg><use href="#i-shield"/></svg><div><h3>Private by default</h3><p>127.0.0.1 only, read-only, and emails, tokens and card numbers are masked.</p></div></li>
+        <li><svg><use href="#i-bolt"/></svg><div><h3>Light</h3><p>One ~3 MB binary, about 50 MB of memory and under 1% of a core while idle.</p></div></li>
+        <li><svg><use href="#i-fork"/></svg><div><h3>Grows with you</h3><p>Agents log what they missed; a skill builds it on your fork and opens a PR.</p></div></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- for agents -->
+  <section class="window win" id="agents" data-win="For AI agents" data-icon="i-robot" aria-labelledby="agents-title">
+    <div class="title-bar">
+      <div class="title-bar-text"><svg class="tb-icon"><use href="#i-robot"/></svg>For AI agents - MCP tools</div>
+      <div class="title-bar-controls"><button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button></div>
+    </div>
+    <div class="window-body">
+      <h2 id="agents-title">Claude can watch its own agents</h2>
+      <p><code>agentwatch setup</code> registers an MCP server with Claude Code. Every tool returns short, redacted text, and transcript content is labelled as observed data, never instructions.</p>
+      <div class="listview" role="region" aria-label="MCP tools" tabindex="0">
+        <table>
+          <thead><tr><th>Tool</th><th>What it's for</th></tr></thead>
+          <tbody>
+            <tr><td><code>agentwatch_wait</code></td><td>Block until a subagent (or any, or all) finishes, changes or gets stuck. Returns their final reports.</td></tr>
+            <tr><td><code>agentwatch_status</code></td><td>Every subagent in the current session: status, counts, latest activity.</td></tr>
+            <tr><td><code>agentwatch_agent</code></td><td>One agent's prompt, numbered timeline and final report. Paged, with a noise filter.</td></tr>
+            <tr><td><code>agentwatch_event</code></td><td>One tool call's full input and output.</td></tr>
+            <tr><td><code>agentwatch_errors</code></td><td>Failures classified: recovered, unresolved, unknown, blocked-by-guard.</td></tr>
+            <tr><td><code>agentwatch_sessions</code></td><td>Recent sessions across all your projects.</td></tr>
+            <tr><td><code>agentwatch_snapshot</code></td><td>The whole session as text, for a full account.</td></tr>
+            <tr><td><code>agentwatch_dashboard</code></td><td>Start the dashboard and return (or open) its URL.</td></tr>
+            <tr><td><code>agentwatch_suggest_improvement</code></td><td>Record what agentwatch couldn't do, in <code>~/.agentwatch/ideas.md</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>It grows with you</h3>
+      <ol class="flow" aria-label="How agentwatch improves">
+        <li><svg><use href="#i-robot"/></svg><span>An agent hits a gap and records it</span></li>
+        <li><svg><use href="#i-page"/></svg><span><code>agentwatch ideas</code> lists it</span></li>
+        <li><svg><use href="#i-fork"/></svg><span>The <b>agentwatch-evolve</b> skill builds it on <b>your fork</b>, with tests</span></li>
+        <li><svg><use href="#i-star"/></svg><span>You approve the push and the PR. Sharing upstream is optional.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- help -->
+  <section class="window win" id="help" data-win="Help and Support" data-icon="i-help" aria-labelledby="help-title">
+    <div class="title-bar">
+      <div class="title-bar-text"><svg class="tb-icon"><use href="#i-help"/></svg>Help and Support Center</div>
+      <div class="title-bar-controls"><button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button></div>
+    </div>
+    <div class="window-body">
+      <h2 id="help-title">Frequently asked questions</h2>
+      <details open><summary>Does it send my transcripts anywhere?</summary><p>No. It reads files under <code>~/.claude/projects</code> on your machine and serves them to your browser on <code>127.0.0.1</code>. Nothing leaves your computer, and it never writes to your transcripts.</p></details>
+      <details><summary>Does watching cost tokens?</summary><p>Collecting and showing data costs nothing. If you let Claude use the MCP tools, the text those tools return counts like any other tool result, which is why they return short summaries by default.</p></details>
+      <details><summary>What do the statuses mean?</summary><p><b>running</b>: a tool call is in flight. <b>thinking</b>: waiting on the model. <b>stale</b>: idle for over 90 s. <b>stuck</b>: idle for over 240 s, often a permission prompt waiting on you. <b>done</b>: finished.</p></details>
+      <details><summary>Is the redaction perfect?</summary><p>No. It masks emails, SSNs, Luhn-valid card numbers, JWTs, bearer tokens, <code>*_TOKEN=</code>-style values and long hex or base64 secrets. That's best effort, so treat the dashboard as sensitive anyway.</p></details>
+      <details><summary>How do I get notified about things?</summary><p>Focus rules in <code>~/.agentwatch/rules.json</code> highlight events or show a desktop toast, for example for browser automation, hook denials or stuck agents. See <code>rules.json</code> in the repo for the format.</p></details>
+      <details><summary>How do I uninstall?</summary><p>Run <code>agentwatch stop</code>, then <code>claude mcp remove agentwatch --scope user</code>. Delete the binary, <code>~/.claude/skills/agentwatch*</code> and <code>~/.agentwatch</code>.</p></details>
+    </div>
+  </section>
+
+  <!-- guestbook -->
+  <section class="window win" id="guestbook" data-win="Guestbook" data-icon="i-book" aria-labelledby="guestbook-title">
+    <div class="title-bar">
+      <div class="title-bar-text"><svg class="tb-icon"><use href="#i-book"/></svg>Guestbook</div>
+      <div class="title-bar-controls"><button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button></div>
+    </div>
+    <div class="window-body guest">
+      <h2 id="guestbook-title">Sign the guestbook!</h2>
+      <p>Found a bug, want a feature, or just want to say hi? The guestbook lives on GitHub.</p>
+      <p class="cta-row">
+        <a class="glossy small" href="https://github.com/coreylallojr/agentwatch/issues/new"><svg><use href="#i-book"/></svg><span><b>Sign it</b><small>open an issue</small></span></a>
+        <a class="glossy small" href="https://github.com/coreylallojr/agentwatch/releases"><svg><use href="#i-disk"/></svg><span><b>Releases</b><small>changelog</small></span></a>
+        <a class="glossy small" href="https://github.com/coreylallojr/agentwatch"><svg><use href="#i-globe"/></svg><span><b>Source</b><small>MIT licensed</small></span></a>
+      </p>
+      <p class="credits">Made with <a href="https://github.com/botoxparty/XP.css">XP.css</a> and <a href="https://github.com/mattboldt/typed.js">Typed.js</a> (both MIT). Not affiliated with Microsoft or Anthropic. Icons are original.</p>
+      <p class="webring" aria-hidden="true">[ <a href="#hero">&lt;&lt; prev</a> | <a href="https://github.com/coreylallojr/agentwatch">agentwatch webring</a> | <a href="#hero">next &gt;&gt;</a> ]</p>
+    </div>
+  </section>
+
+</main>
+
+<!-- taskbar -->
+<footer class="taskbar" role="contentinfo">
+  <button class="start" id="start" aria-haspopup="menu" aria-expanded="false" aria-controls="startmenu"><svg><use href="#i-flag"/></svg><span>start</span></button>
+  <div class="tasks" id="tasks" role="toolbar" aria-label="Open windows"></div>
+  <div class="tray"><span class="tray-stars" title="GitHub stars"><svg><use href="#i-star"/></svg><span id="tray-stars">–</span></span><time id="clock"></time></div>
+</footer>
+
+<div class="startmenu" id="startmenu" role="menu" hidden>
+  <div class="sm-head"><img src="img/logo.svg" alt="" width="40" height="40"><b>agentwatch</b></div>
+  <div class="sm-body">
+    <ul class="sm-left" id="sm-windows"></ul>
+    <ul class="sm-right">
+      <li><a role="menuitem" href="https://github.com/coreylallojr/agentwatch"><svg><use href="#i-globe"/></svg>GitHub repository</a></li>
+      <li><a role="menuitem" href="https://github.com/coreylallojr/agentwatch/releases"><svg><use href="#i-disk"/></svg>Releases</a></li>
+      <li><a role="menuitem" href="https://github.com/coreylallojr/agentwatch/blob/main/README.md"><svg><use href="#i-page"/></svg>README</a></li>
+      <li><button role="menuitem" id="tidy"><svg><use href="#i-panel"/></svg>Tidy up windows</button></li>
+    </ul>
+  </div>
+  <div class="sm-foot"><button role="menuitem" id="shutdown"><svg><use href="#i-bolt"/></svg>Turn Off Computer</button></div>
+</div>
+
+<dialog class="window viewer" id="viewer" aria-labelledby="viewer-title">
+  <div class="title-bar">
+    <div class="title-bar-text" id="viewer-title">Picture Viewer</div>
+    <div class="title-bar-controls"><button aria-label="Close" id="viewer-close"></button></div>
+  </div>
+  <div class="window-body">
+    <img id="viewer-img" alt="">
+    <div class="viewer-bar"><button id="viewer-prev">◀ Previous</button><span id="viewer-cap"></span><button id="viewer-next">Next ▶</button></div>
+  </div>
+</dialog>
+
+<div class="shutdown" id="shutdown-screen" hidden><p>It's now safe to close your browser.</p><button id="poweron">Turn it back on</button></div>
+
+<script src="assets/vendor/typed.umd.js" defer></script>
+<script src="assets/site.js" defer></script>
+</body>
+</html>

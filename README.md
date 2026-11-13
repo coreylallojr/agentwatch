@@ -1,136 +1,221 @@
-# agentwatch
+<p align="center">
+  <a href="https://coreylallojr.github.io/agentwatch/"><img src="docs/img/banner.svg" alt="agentwatch: watch your Claude Code subagents. Zero tokens, one small binary, MCP tools for your agents." width="100%"></a>
+</p>
 
-A local dashboard, and a set of AI-agent tools, for watching your [Claude Code](https://claude.com/claude-code) sessions
-and subagents, from any folder, without getting in the way of the work.
+<p align="center">
+  <a href="https://github.com/coreylallojr/agentwatch/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/coreylallojr/agentwatch/ci.yml?branch=main&label=CI&logo=github&style=flat-square"></a>
+  <a href="https://github.com/coreylallojr/agentwatch/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/coreylallojr/agentwatch?style=flat-square&color=0a5ee0&label=release"></a>
+  <img alt="Rust" src="https://img.shields.io/badge/rust-one%20binary-orange?style=flat-square&logo=rust">
+  <img alt="Platforms" src="https://img.shields.io/badge/windows%20·%20macOS%20·%20linux-supported-1f9d55?style=flat-square">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-ready-8b5cf6?style=flat-square">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/coreylallojr/agentwatch?style=flat-square&color=555"></a>
+</p>
 
-- **Zero tokens.** It only reads the transcript files Claude Code already writes under `~/.claude/projects/`.
-- **One small binary.** Written in Rust, no runtime needed. It listens on `127.0.0.1` only and never changes your transcripts.
-- **Light.** About 0.8% of one CPU core while idle, about 50 MB of memory, and live updates within about 100 ms.
-- **Session agnostic.** One dashboard shows every project and session; filter by project or pick a session.
-- **For AI agents too.** An MCP server and two skills let Claude check on its own subagents: wait for them instead of
-  polling, read a compact timeline, see why something failed.
-- **Grows with you.** Agents record what agentwatch couldn't do for them; the `agentwatch-evolve` skill turns those
-  ideas into tested changes on your own fork.
+<p align="center">
+  <b><a href="https://coreylallojr.github.io/agentwatch/">Website</a></b> ·
+  <a href="#-install">Install</a> ·
+  <a href="#-see-it">Screenshots</a> ·
+  <a href="#-for-ai-agents">For AI agents</a> ·
+  <a href="#-use">Use</a> ·
+  <a href="#-develop">Develop</a>
+</p>
 
-## Install
+<h3 align="center">A local dashboard, and a set of MCP tools, for watching your Claude Code sessions and subagents.<br>Zero tokens to collect. One small binary. Read-only and redacted.</h3>
 
-**Windows** (PowerShell):
+<p align="center"><img src="docs/img/dashboard.png" alt="The agentwatch dashboard: one lane per subagent with live status, and the selected agent's tool calls" width="92%"></p>
+
+|   |   |
+|---|---|
+| 🪙 **Zero tokens.** It reads the transcripts Claude Code already writes under `~/.claude/projects`. | ⚡ **Light.** About 50 MB of memory and under 1% of one core while idle; updates in about 100 ms. |
+| 🛤️ **Live lanes.** Running, thinking, stale, stuck or done, for every subagent of every project. | 🤖 **For agents too.** MCP tools let Claude wait for its own subagents instead of polling. |
+| 🧯 **Readable errors.** Each failure is recovered, unresolved, still working or blocked by a hook. | 🔒 **Private.** `127.0.0.1` only, never writes your transcripts, masks emails, tokens and card numbers. |
+
+## 💾 Install
+
+<table>
+<tr><td><b>Windows</b> (PowerShell)</td><td>
 
 ```powershell
 irm https://raw.githubusercontent.com/coreylallojr/agentwatch/main/install.ps1 | iex
 ```
 
-**macOS / Linux**:
+</td></tr>
+<tr><td><b>macOS · Linux</b></td><td>
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/coreylallojr/agentwatch/main/install.sh | sh
 ```
 
-The installer downloads the latest release for your platform, checks its SHA-256, puts `agentwatch` on your PATH and
-runs `agentwatch setup`. Setup installs the skills into `~/.claude/skills` and registers the MCP server with Claude Code
-at user scope. Restart Claude Code afterwards. Set `AGENTWATCH_NO_SETUP=1` to skip setup.
-
-**As a Claude Code plugin** (bundles the skills and the MCP server; the `agentwatch` binary must be on your PATH, so run
-an installer above with `AGENTWATCH_NO_SETUP=1` first):
+</td></tr>
+<tr><td><b>Claude Code plugin</b></td><td>
 
 ```
 /plugin install agentwatch --marketplace coreylallojr/agentwatch
 ```
 
-**From source**: `cargo install --git https://github.com/coreylallojr/agentwatch agentwatch`, then `agentwatch setup`.
+</td></tr>
+<tr><td><b>From source</b></td><td>
 
-## Use
+```sh
+cargo install --git https://github.com/coreylallojr/agentwatch agentwatch && agentwatch setup
+```
+
+</td></tr>
+</table>
+
+The installer downloads the latest release for your system, checks its SHA-256, puts `agentwatch` on your PATH, and runs
+`agentwatch setup`. Setup installs two skills into `~/.claude/skills` and registers the MCP server with Claude Code. Then
+restart Claude Code. Set `AGENTWATCH_NO_SETUP=1` to skip setup; the plugin route needs the binary on PATH first.
+
+## 🖼️ See it
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/claude-mcp.png" alt="Claude Code calling agentwatch_status and agentwatch_errors through MCP"><p align="center"><sub><b>Claude checks on its own agents via MCP</b></sub></p></td>
+<td width="50%"><img src="docs/img/dashboard-dark.png" alt="Dark mode: browser automation highlighted, a guard denial and a screenshot inline"><p align="center"><sub><b>Dark mode, browser automation, screenshots inline</b></sub></p></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/terminal-status.png" alt="agentwatch status in a terminal"><p align="center"><sub><b><code>agentwatch status</code> in your terminal</b></sub></p></td>
+<td width="50%"><img src="docs/img/dashboard-report.png" alt="A finished agent's final report rendered as markdown"><p align="center"><sub><b>Final reports, rendered</b></sub></p></td>
+</tr>
+</table>
+
+<sub>Every screenshot comes from a fictional demo project generated by <a href="docs/tools/demo-projects.mjs"><code>docs/tools/demo-projects.mjs</code></a> and captured by <a href="docs/tools/screenshots.mjs"><code>docs/tools/screenshots.mjs</code></a>. No real transcripts.</sub>
+
+## 🤖 For AI agents
+
+`agentwatch setup` (or the plugin) gives Claude Code these MCP tools. All of them are read-only over your transcripts
+and return short, redacted text. Transcript content is labelled as observed data, never as instructions.
+
+| Tool | Use it to |
+|---|---|
+| `agentwatch_wait` | block until a subagent (or any, or all) finishes, changes or gets stuck, then return their final reports |
+| `agentwatch_status` | list every subagent of the current session with status, counts and latest activity |
+| `agentwatch_agent` | read one agent's prompt, numbered timeline and final report (paged, with a noise filter) |
+| `agentwatch_event` | read one tool call's full input and output |
+| `agentwatch_errors` | list failures, classified as recovered, unresolved, unknown or blocked-by-guard |
+| `agentwatch_sessions` | find recent sessions across projects |
+| `agentwatch_snapshot` | get the whole session as text |
+| `agentwatch_dashboard` | start the dashboard and return (or open) its URL |
+| `agentwatch_suggest_improvement` | record something agentwatch couldn't do, in `~/.agentwatch/ideas.md` |
+
+"Current session" means the latest session of the project Claude Code is running in (`CLAUDE_PROJECT_DIR`). Two skills come
+with it: **`agentwatch`** teaches Claude when to use the tools and how to keep them cheap, and **`agentwatch-evolve`** turns
+recorded ideas into improvements.
+
+### 🌱 It grows with you
+
+```mermaid
+flowchart LR
+  A["🤖 An agent hits a gap<br/>agentwatch_suggest_improvement"] --> B["📝 ~/.agentwatch/ideas.md<br/>agentwatch ideas"]
+  B --> C["🍴 agentwatch-evolve skill<br/>builds it on <b>your fork</b>,<br/>tests + parity checks"]
+  C --> D{"✋ You approve?"}
+  D -- "push + PR" --> E["✅ PR to your fork"]
+  E -. "optional" .-> F["🌍 PR upstream"]
+```
+
+The skill asks before it creates a fork, before it pushes, and before it opens a pull request.
+
+## 🖥️ Use
 
 ```sh
 agentwatch              # open the dashboard, focused on the project for the current folder
 agentwatch --all        # open it with every project visible
-agentwatch status       # list active sessions and subagents in the terminal (no browser, no server)
-agentwatch snapshot     # print the plain-text collection snapshot (pipe it to an AI)
+agentwatch status       # sessions and subagents in the terminal (no browser, no server)
+agentwatch snapshot     # the whole session as plain text (pipe it to an AI)
+agentwatch ideas        # improvement ideas recorded by agents
 agentwatch stop         # stop the background server
-agentwatch --no-open    # start the server without opening a browser
 agentwatch --port 4800  # default port is 4778
 ```
 
 The first run starts a small background server. It exits by itself after 30 minutes with no browser connected and no
 transcript activity.
 
-## What you see
+<details>
+<summary><b>What's in the dashboard</b></summary>
 
 - **Lanes**: one per subagent. Status is running, thinking, stale (idle > 90 s), stuck (idle > 240 s) or done.
 - **Timeline**: assistant text as chat bubbles; each tool call is an expandable card with its input and trimmed output.
-- **Collection page** (`/collection`): every agent and every event, fully expanded and server-rendered, with a built-in
+- **Collection page** (`/collection`): every agent and every event on one server-rendered page, with a built-in
   "Watchkeeper" protocol that tells a browser AI how to read the page and what to report.
-- **Focus rules**: highlight or desktop-toast notable events (browser automation, hook/guard denials, stuck agents).
-  Put your own in `~/.agentwatch/rules.json` (see `rules.json` in this repo for the format; keys are `tool`, `path`,
-  `isError`, `deny`, `stuck`). Patterns use Rust regex syntax, which has no lookarounds.
+- **Focus rules**: highlight events or show a desktop toast (browser automation, hook/guard denials, stuck agents).
+  Put your own in `~/.agentwatch/rules.json`; see [`rules.json`](rules.json) for the format (keys `tool`, `path`,
+  `isError`, `deny`, `stuck`; patterns use Rust regex syntax).
 
-## For AI agents
+</details>
 
-`agentwatch setup` (or the plugin) gives Claude Code these MCP tools. All of them are read-only over your transcripts
-and return compact, redacted text:
+<details>
+<summary><b>Privacy</b></summary>
 
-| Tool | Use it to |
-|---|---|
-| `agentwatch_wait` | block until a subagent, any subagent or all subagents finish (or change, or get stuck) instead of polling; returns their final handbacks |
-| `agentwatch_status` | list every subagent of the current session with status, counts and latest activity |
-| `agentwatch_agent` | read one agent's prompt, numbered timeline and final handback (paged, noise filter) |
-| `agentwatch_event` | read one tool call's full input and output |
-| `agentwatch_errors` | list failures classified as recovered, unresolved, unknown or blocked-by-guard |
-| `agentwatch_sessions` | find recent sessions across projects |
-| `agentwatch_snapshot` | get the whole session as text |
-| `agentwatch_dashboard` | start the dashboard and return (or open) its URL |
-| `agentwatch_suggest_improvement` | record something agentwatch couldn't do, in `~/.agentwatch/ideas.md` |
+Everything stays on your machine. All displayed text goes through a redactor that masks emails, SSNs, card numbers
+(Luhn-checked), JWTs, bearer tokens, `*_TOKEN=` / `*_SECRET=` style values and long hex/base64 secrets. Redaction is best
+effort, so treat the dashboard as sensitive anyway. The MCP tools apply the same redaction.
 
-"Current session" means the latest session of the project Claude Code is running in (`CLAUDE_PROJECT_DIR`).
+</details>
 
-Two skills come with it:
-
-- **`agentwatch`** tells Claude when to use these tools and how to keep them cheap.
-- **`agentwatch-evolve`** takes an idea from `agentwatch ideas` (or your request), builds it on a branch of **your fork**,
-  runs the tests and parity checks, and opens a pull request to your fork. It asks before creating the fork, before
-  pushing and before opening the PR. Sending a change upstream is optional.
-
-Run the MCP server yourself with `agentwatch mcp`, or register it by hand:
-`claude mcp add --transport stdio --scope user agentwatch -- agentwatch mcp`.
-
-## Privacy
-
-Everything stays on your machine. All displayed text is passed through a redactor that masks emails, SSNs, card numbers
-(Luhn-checked), JWTs, bearer tokens, `*_TOKEN=` / `*_SECRET=` style values and long hex/base64 secrets. Redaction is
-best effort; treat the dashboard as sensitive anyway. The MCP tools apply the same redaction, and present transcript text
-as observed data rather than instructions.
-
-## Configuration
+<details>
+<summary><b>Configuration</b></summary>
 
 | Variable | Meaning |
 |---|---|
 | `CLAUDE_PROJECTS_DIR` | Where Claude Code transcripts live (default `~/.claude/projects`) |
 | `AGENTWATCH_HOME` | Where agentwatch keeps its pidfile, optional `rules.json` and `ideas.md` (default `~/.agentwatch`) |
 | `AGENTWATCH_NO_SETUP` | Installers: skip `agentwatch setup` |
+| `AGENTWATCH_INSTALL_DIR` | `install.sh`: where to put the binary (default `~/.local/bin`) |
 
-## Develop
+</details>
 
-The Rust crate is in `rust/`. The original Node implementation (`src/`, `bin/`) stays in the repo as the **parity
-oracle**: the Rust output must match it byte for byte.
+<details>
+<summary><b>Uninstall</b></summary>
+
+`agentwatch stop`, then `claude mcp remove agentwatch --scope user`. Delete the binary, `~/.claude/skills/agentwatch*`
+and `~/.agentwatch`.
+
+</details>
+
+## 🛠️ Develop
+
+The Rust crate is in [`rust/`](rust). The original Node implementation ([`src/`](src), [`bin/`](bin)) stays in the repo as the
+**parity oracle**: the Rust output has to match it byte for byte, and CI checks that on Windows, macOS and Linux.
 
 ```sh
 cargo test --manifest-path rust/Cargo.toml
 cargo build --release --manifest-path rust/Cargo.toml
-npm test                                    # Node suite
+npm test                                    # Node suite (the oracle)
 now=$(node parity/fixtures.mjs .parity-fx)  # synthetic projects dir
 node parity/run.mjs  --projects .parity-fx --now "$now" --bin rust/target/release/agentwatch   # every API surface
 node parity/http.mjs --projects .parity-fx --bin rust/target/release/agentwatch                # live HTTP, route by route
-node parity/live.mjs --bin rust/target/release/agentwatch    # live updates while files change
-node parity/mcp.mjs  --bin rust/target/release/agentwatch    # MCP server end to end
-node parity/bench.mjs                                        # Node vs Rust: latency, memory, idle CPU
+node parity/live.mjs --bin rust/target/release/agentwatch   # live updates while files change
+node parity/mcp.mjs  --bin rust/target/release/agentwatch   # MCP server end to end
+node parity/bench.mjs                                       # Node vs Rust: latency, memory, idle CPU
+node docs/tools/screenshots.mjs                             # regenerate the screenshots (needs Playwright)
 ```
 
-Pushing a `v*` tag builds release binaries for Windows, Linux and macOS and publishes them with checksums
-(`.github/workflows/release.yml`). The tag must match the version in `rust/Cargo.toml`.
+<details>
+<summary><b>Performance (same projects folder, Windows 11, i5-1235U)</b></summary>
 
-Known differences from the Node version: a JS string slice that splits an emoji yields U+FFFD; non-ISO timestamps are not
-parsed; `rules.json` patterns use Rust regex syntax.
+| | Node version | Rust version |
+|---|---|---|
+| Idle CPU (share of one core) | 5.6–7.0% | **0.8%** |
+| Memory (private) | ~100 MB | **~47 MB** |
+| Live update reaches the browser | up to 1 s | **~100 ms** |
+| 7.8 MB Collection page, p95 | 270 ms | **141 ms** |
 
-## License
+</details>
 
-MIT
+<details>
+<summary><b>Releases and the website</b></summary>
+
+- Pushing a `v*` tag builds binaries for Windows, Linux and macOS (Intel and Apple Silicon) and publishes them with
+  checksums ([`release.yml`](.github/workflows/release.yml)). The tag must match the version in `rust/Cargo.toml`.
+- The website in [`docs/`](docs) is published by [`pages.yml`](.github/workflows/pages.yml). It uses
+  [XP.css](https://github.com/botoxparty/XP.css) and [Typed.js](https://github.com/mattboldt/typed.js) (both MIT,
+  vendored in `docs/assets/vendor`).
+- Known differences from the Node version: a JS string slice that splits an emoji yields U+FFFD, non-ISO timestamps
+  are not parsed, and `rules.json` patterns use Rust regex syntax.
+
+</details>
+
+## 📜 License
+
+[MIT](LICENSE). Not affiliated with Anthropic or Microsoft.

@@ -55,7 +55,8 @@ jobs:
           check live node parity/live.mjs --bin "$bin"
           check mcp  node parity/mcp.mjs --bin "$bin"
           exit $fail
-      - name: Plugin manifest
+      - name: Plugin manifest and website
         if: runner.os == 'Linux'
         run: |
-          node -e "for (const f of ['.claude-plugin/plugin.json','.claude-plugin/marketplace.json','.mcp.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
+          node -e "for (const f of ['.claude-plugin/plugin.json','.claude-plugin/marketplace.json','.mcp.json','docs/assets/demo-output.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
+          node --check docs/assets/site.js
